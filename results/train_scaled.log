@@ -1,0 +1,123 @@
+=== BASELINE SCALED (15.6k imgs, 70 ep) ===
+seed: 0
+mode: baseline
+device: cuda
+model:
+  model_id: facebook/dinov3-vits16-pretrain-lvd1689m
+  num_slots: 7
+  slot_dim: 256
+  slot_iters: 3
+  decoder_hidden: 1024
+  decoder_layers: 4
+  n_steps: 8
+  gnn_layers: 2
+  gnn_heads: 4
+  n_latent_steps: 1
+  image_size: 336
+  target_norm: false
+data:
+  batch_size: 32
+  num_workers: 8
+  image_size: 336
+  cache_dir: null
+  large_train: true
+optim:
+  lr: 0.0004
+  weight_decay: 0.0
+  warmup_steps: 300
+  epochs: 70
+  grad_clip: 1.0
+  grad_accum: 1
+loss:
+  intermediate_weight: 0.25
+  final_weight: 1.0
+  entropy_weight: 0.0
+  balance_weight: 0.0
+  query_ortho_weight: 0.0
+  query_ortho_margin: 0.0
+  act_weight: 0.0
+log:
+  wandb: false
+  project: dino-trm
+  run_name: null
+  mode: online
+  viz_every: 500
+  eval_every_epochs: 1
+  ckpt_dir: checkpoints
+eval:
+  max_batches: 10
+
+mode=baseline grid=21 num_patches=441
+train set: VOC image-only (leakage-free), 15675 images
+trainable params: 3.89M
+[epoch 0] mBO_i=0.1969 mBO_c=0.2370 FG-ARI=0.1393
+[epoch 1] mBO_i=0.3067 mBO_c=0.3346 FG-ARI=0.2049
+[epoch 2] mBO_i=0.3309 mBO_c=0.3590 FG-ARI=0.2481
+[epoch 3] mBO_i=0.3300 mBO_c=0.3579 FG-ARI=0.2329
+[epoch 4] mBO_i=0.3218 mBO_c=0.3502 FG-ARI=0.2223
+[epoch 5] mBO_i=0.3403 mBO_c=0.3674 FG-ARI=0.2382
+[epoch 6] mBO_i=0.3376 mBO_c=0.3645 FG-ARI=0.2294
+[epoch 7] mBO_i=0.3396 mBO_c=0.3679 FG-ARI=0.2252
+[epoch 8] mBO_i=0.3469 mBO_c=0.3789 FG-ARI=0.2192
+[epoch 9] mBO_i=0.3497 mBO_c=0.3786 FG-ARI=0.2472
+[epoch 10] mBO_i=0.3355 mBO_c=0.3633 FG-ARI=0.2257
+[epoch 11] mBO_i=0.3465 mBO_c=0.3759 FG-ARI=0.2391
+[epoch 12] mBO_i=0.3375 mBO_c=0.3678 FG-ARI=0.2536
+[epoch 13] mBO_i=0.3417 mBO_c=0.3715 FG-ARI=0.2523
+[epoch 14] mBO_i=0.3449 mBO_c=0.3729 FG-ARI=0.2525
+[epoch 15] mBO_i=0.3543 mBO_c=0.3856 FG-ARI=0.2456
+[epoch 16] mBO_i=0.3447 mBO_c=0.3744 FG-ARI=0.2581
+[epoch 17] mBO_i=0.3444 mBO_c=0.3713 FG-ARI=0.2254
+[epoch 18] mBO_i=0.3610 mBO_c=0.3896 FG-ARI=0.2328
+[epoch 19] mBO_i=0.3467 mBO_c=0.3693 FG-ARI=0.2422
+[epoch 20] mBO_i=0.3483 mBO_c=0.3786 FG-ARI=0.2382
+[epoch 21] mBO_i=0.3531 mBO_c=0.3813 FG-ARI=0.2487
+[epoch 22] mBO_i=0.3589 mBO_c=0.3886 FG-ARI=0.2549
+[epoch 23] mBO_i=0.3521 mBO_c=0.3822 FG-ARI=0.2547
+[epoch 24] mBO_i=0.3533 mBO_c=0.3832 FG-ARI=0.2548
+[epoch 25] mBO_i=0.3465 mBO_c=0.3780 FG-ARI=0.2533
+[epoch 26] mBO_i=0.3555 mBO_c=0.3882 FG-ARI=0.2612
+[epoch 27] mBO_i=0.3556 mBO_c=0.3792 FG-ARI=0.2499
+[epoch 28] mBO_i=0.3528 mBO_c=0.3819 FG-ARI=0.2534
+[epoch 29] mBO_i=0.3625 mBO_c=0.3949 FG-ARI=0.2475
+[epoch 30] mBO_i=0.3538 mBO_c=0.3835 FG-ARI=0.2650
+[epoch 31] mBO_i=0.3583 mBO_c=0.3872 FG-ARI=0.2473
+[epoch 32] mBO_i=0.3669 mBO_c=0.3998 FG-ARI=0.2594
+[epoch 33] mBO_i=0.3574 mBO_c=0.3898 FG-ARI=0.2585
+[epoch 34] mBO_i=0.3655 mBO_c=0.3965 FG-ARI=0.2590
+[epoch 35] mBO_i=0.3659 mBO_c=0.3952 FG-ARI=0.2650
+[epoch 36] mBO_i=0.3613 mBO_c=0.3901 FG-ARI=0.2583
+[epoch 37] mBO_i=0.3628 mBO_c=0.3926 FG-ARI=0.2411
+[epoch 38] mBO_i=0.3627 mBO_c=0.3911 FG-ARI=0.2528
+[epoch 39] mBO_i=0.3593 mBO_c=0.3908 FG-ARI=0.2452
+[epoch 40] mBO_i=0.3555 mBO_c=0.3872 FG-ARI=0.2452
+[epoch 41] mBO_i=0.3629 mBO_c=0.3899 FG-ARI=0.2670
+[epoch 42] mBO_i=0.3596 mBO_c=0.3905 FG-ARI=0.2515
+[epoch 43] mBO_i=0.3548 mBO_c=0.3862 FG-ARI=0.2404
+[epoch 44] mBO_i=0.3691 mBO_c=0.3987 FG-ARI=0.2704
+[epoch 45] mBO_i=0.3738 mBO_c=0.4040 FG-ARI=0.2617
+[epoch 46] mBO_i=0.3650 mBO_c=0.3964 FG-ARI=0.2650
+[epoch 47] mBO_i=0.3591 mBO_c=0.3930 FG-ARI=0.2543
+[epoch 48] mBO_i=0.3620 mBO_c=0.3974 FG-ARI=0.2725
+[epoch 49] mBO_i=0.3690 mBO_c=0.4004 FG-ARI=0.2599
+[epoch 50] mBO_i=0.3687 mBO_c=0.4016 FG-ARI=0.2639
+[epoch 51] mBO_i=0.3630 mBO_c=0.3917 FG-ARI=0.2661
+[epoch 52] mBO_i=0.3596 mBO_c=0.3889 FG-ARI=0.2716
+[epoch 53] mBO_i=0.3596 mBO_c=0.3907 FG-ARI=0.2568
+[epoch 54] mBO_i=0.3621 mBO_c=0.3924 FG-ARI=0.2617
+[epoch 55] mBO_i=0.3633 mBO_c=0.3947 FG-ARI=0.2517
+[epoch 56] mBO_i=0.3601 mBO_c=0.3885 FG-ARI=0.2539
+[epoch 57] mBO_i=0.3645 mBO_c=0.3908 FG-ARI=0.2600
+[epoch 58] mBO_i=0.3641 mBO_c=0.3897 FG-ARI=0.2617
+[epoch 59] mBO_i=0.3516 mBO_c=0.3816 FG-ARI=0.2581
+[epoch 60] mBO_i=0.3643 mBO_c=0.3933 FG-ARI=0.2605
+[epoch 61] mBO_i=0.3690 mBO_c=0.3961 FG-ARI=0.2592
+[epoch 62] mBO_i=0.3597 mBO_c=0.3926 FG-ARI=0.2502
+[epoch 63] mBO_i=0.3641 mBO_c=0.3913 FG-ARI=0.2650
+[epoch 64] mBO_i=0.3634 mBO_c=0.3959 FG-ARI=0.2602
+[epoch 65] mBO_i=0.3693 mBO_c=0.3986 FG-ARI=0.2631
+[epoch 66] mBO_i=0.3622 mBO_c=0.3929 FG-ARI=0.2718
+[epoch 67] mBO_i=0.3639 mBO_c=0.3983 FG-ARI=0.2560
+[epoch 68] mBO_i=0.3730 mBO_c=0.4023 FG-ARI=0.2637
+[epoch 69] mBO_i=0.3640 mBO_c=0.3936 FG-ARI=0.2558
+=== DONE ===

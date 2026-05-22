@@ -1,0 +1,187 @@
+=== TRM SCALED (concat, 40ep) ===
+seed: 0
+mode: trm
+device: cuda
+model:
+  model_id: facebook/dinov3-vits16-pretrain-lvd1689m
+  num_slots: 7
+  slot_dim: 256
+  slot_iters: 3
+  decoder_hidden: 1024
+  decoder_layers: 4
+  n_steps: 8
+  gnn_layers: 2
+  gnn_heads: 4
+  n_latent_steps: 1
+  gnn_combine: concat
+  image_size: 336
+  target_norm: false
+data:
+  batch_size: 32
+  num_workers: 8
+  image_size: 336
+  cache_dir: null
+  large_train: true
+optim:
+  lr: 0.0004
+  weight_decay: 0.0
+  warmup_steps: 200
+  epochs: 40
+  grad_clip: 1.0
+  grad_accum: 1
+loss:
+  intermediate_weight: 0.25
+  final_weight: 1.0
+  entropy_weight: 0.0
+  balance_weight: 0.0
+  query_ortho_weight: 0.0
+  query_ortho_margin: 0.0
+  act_weight: 0.0
+log:
+  wandb: false
+  project: dino-trm
+  run_name: null
+  mode: online
+  viz_every: 500
+  eval_every_epochs: 1
+  ckpt_dir: checkpoints
+eval:
+  max_batches: 10
+
+mode=trm grid=21 num_patches=441
+train set: VOC image-only (leakage-free), 15675 images
+trainable params: 5.87M
+[epoch 0] mBO_i=0.1976 mBO_c=0.2384 FG-ARI=0.1399
+[epoch 1] mBO_i=0.2980 mBO_c=0.3266 FG-ARI=0.2003
+[epoch 2] mBO_i=0.3173 mBO_c=0.3452 FG-ARI=0.2061
+[epoch 3] mBO_i=0.3156 mBO_c=0.3420 FG-ARI=0.2245
+[epoch 4] mBO_i=0.3274 mBO_c=0.3576 FG-ARI=0.2523
+[epoch 5] mBO_i=0.3347 mBO_c=0.3651 FG-ARI=0.2256
+[epoch 6] mBO_i=0.3352 mBO_c=0.3623 FG-ARI=0.2314
+[epoch 7] mBO_i=0.3419 mBO_c=0.3743 FG-ARI=0.2447
+[epoch 8] mBO_i=0.3433 mBO_c=0.3737 FG-ARI=0.2325
+[epoch 9] mBO_i=0.3484 mBO_c=0.3821 FG-ARI=0.2372
+[epoch 10] mBO_i=0.3468 mBO_c=0.3786 FG-ARI=0.2528
+[epoch 11] mBO_i=0.3378 mBO_c=0.3692 FG-ARI=0.2681
+[epoch 12] mBO_i=0.3494 mBO_c=0.3853 FG-ARI=0.2582
+[epoch 13] mBO_i=0.3617 mBO_c=0.3901 FG-ARI=0.2566
+[epoch 14] mBO_i=0.3734 mBO_c=0.3993 FG-ARI=0.2491
+[epoch 15] mBO_i=0.3621 mBO_c=0.3913 FG-ARI=0.2384
+[epoch 16] mBO_i=0.3593 mBO_c=0.3879 FG-ARI=0.2502
+[epoch 17] mBO_i=0.3487 mBO_c=0.3876 FG-ARI=0.2464
+[epoch 18] mBO_i=0.3562 mBO_c=0.3912 FG-ARI=0.2423
+[epoch 19] mBO_i=0.3542 mBO_c=0.3892 FG-ARI=0.2444
+[epoch 20] mBO_i=0.3629 mBO_c=0.3923 FG-ARI=0.2511
+[epoch 21] mBO_i=0.3563 mBO_c=0.3895 FG-ARI=0.2488
+[epoch 22] mBO_i=0.3698 mBO_c=0.4037 FG-ARI=0.2557
+[epoch 23] mBO_i=0.3624 mBO_c=0.3925 FG-ARI=0.2627
+[epoch 24] mBO_i=0.3608 mBO_c=0.3892 FG-ARI=0.2568
+[epoch 25] mBO_i=0.3743 mBO_c=0.4066 FG-ARI=0.2541
+[epoch 26] mBO_i=0.3665 mBO_c=0.3977 FG-ARI=0.2602
+[epoch 27] mBO_i=0.3789 mBO_c=0.4073 FG-ARI=0.2725
+[epoch 28] mBO_i=0.3688 mBO_c=0.4024 FG-ARI=0.2509
+[epoch 29] mBO_i=0.3700 mBO_c=0.3997 FG-ARI=0.2648
+[epoch 30] mBO_i=0.3690 mBO_c=0.4029 FG-ARI=0.2511
+[epoch 31] mBO_i=0.3742 mBO_c=0.4060 FG-ARI=0.2635
+[epoch 32] mBO_i=0.3689 mBO_c=0.4055 FG-ARI=0.2523
+[epoch 33] mBO_i=0.3761 mBO_c=0.4078 FG-ARI=0.2711
+[epoch 34] mBO_i=0.3740 mBO_c=0.4033 FG-ARI=0.2734
+[epoch 35] mBO_i=0.3718 mBO_c=0.4039 FG-ARI=0.2604
+[epoch 36] mBO_i=0.3702 mBO_c=0.3995 FG-ARI=0.2615
+[epoch 37] mBO_i=0.3699 mBO_c=0.3988 FG-ARI=0.2543
+[epoch 38] mBO_i=0.3760 mBO_c=0.4067 FG-ARI=0.2711
+[epoch 39] mBO_i=0.3698 mBO_c=0.4010 FG-ARI=0.2613
+=== COUPLED SCALED (concat, 40ep) ===
+seed: 0
+mode: coupled
+device: cuda
+model:
+  model_id: facebook/dinov3-vits16-pretrain-lvd1689m
+  num_slots: 7
+  slot_dim: 256
+  slot_iters: 3
+  decoder_hidden: 1024
+  decoder_layers: 4
+  n_steps: 8
+  gnn_layers: 2
+  gnn_heads: 4
+  n_latent_steps: 1
+  gnn_combine: concat
+  image_size: 336
+  target_norm: false
+data:
+  batch_size: 32
+  num_workers: 8
+  image_size: 336
+  cache_dir: null
+  large_train: true
+optim:
+  lr: 0.0004
+  weight_decay: 0.0
+  warmup_steps: 200
+  epochs: 40
+  grad_clip: 1.0
+  grad_accum: 1
+loss:
+  intermediate_weight: 0.25
+  final_weight: 1.0
+  entropy_weight: 0.0
+  balance_weight: 0.0
+  query_ortho_weight: 0.1
+  query_ortho_margin: 0.0
+  act_weight: 0.0
+log:
+  wandb: false
+  project: dino-trm
+  run_name: null
+  mode: online
+  viz_every: 500
+  eval_every_epochs: 1
+  ckpt_dir: checkpoints
+eval:
+  max_batches: 10
+
+mode=coupled grid=21 num_patches=441
+train set: VOC image-only (leakage-free), 15675 images
+trainable params: 5.87M
+[epoch 0] mBO_i=0.2026 mBO_c=0.2473 FG-ARI=0.1346
+[epoch 1] mBO_i=0.3004 mBO_c=0.3292 FG-ARI=0.2121
+[epoch 2] mBO_i=0.3215 mBO_c=0.3472 FG-ARI=0.2151
+[epoch 3] mBO_i=0.3209 mBO_c=0.3468 FG-ARI=0.2305
+[epoch 4] mBO_i=0.3416 mBO_c=0.3692 FG-ARI=0.2390
+[epoch 5] mBO_i=0.3355 mBO_c=0.3642 FG-ARI=0.2318
+[epoch 6] mBO_i=0.3401 mBO_c=0.3694 FG-ARI=0.2412
+[epoch 7] mBO_i=0.3496 mBO_c=0.3789 FG-ARI=0.2468
+[epoch 8] mBO_i=0.3475 mBO_c=0.3761 FG-ARI=0.2390
+[epoch 9] mBO_i=0.3445 mBO_c=0.3724 FG-ARI=0.2482
+[epoch 10] mBO_i=0.3471 mBO_c=0.3738 FG-ARI=0.2240
+[epoch 11] mBO_i=0.3449 mBO_c=0.3722 FG-ARI=0.2545
+[epoch 12] mBO_i=0.3502 mBO_c=0.3780 FG-ARI=0.2451
+[epoch 13] mBO_i=0.3591 mBO_c=0.3892 FG-ARI=0.2600
+[epoch 14] mBO_i=0.3510 mBO_c=0.3816 FG-ARI=0.2414
+[epoch 15] mBO_i=0.3551 mBO_c=0.3791 FG-ARI=0.2440
+[epoch 16] mBO_i=0.3519 mBO_c=0.3872 FG-ARI=0.2601
+[epoch 17] mBO_i=0.3685 mBO_c=0.3990 FG-ARI=0.2553
+[epoch 18] mBO_i=0.3545 mBO_c=0.3891 FG-ARI=0.2612
+[epoch 19] mBO_i=0.3681 mBO_c=0.3974 FG-ARI=0.2655
+[epoch 20] mBO_i=0.3634 mBO_c=0.3929 FG-ARI=0.2643
+[epoch 21] mBO_i=0.3636 mBO_c=0.3898 FG-ARI=0.2545
+[epoch 22] mBO_i=0.3684 mBO_c=0.4007 FG-ARI=0.2537
+[epoch 23] mBO_i=0.3644 mBO_c=0.3964 FG-ARI=0.2742
+[epoch 24] mBO_i=0.3639 mBO_c=0.3902 FG-ARI=0.2578
+[epoch 25] mBO_i=0.3690 mBO_c=0.4007 FG-ARI=0.2702
+[epoch 26] mBO_i=0.3672 mBO_c=0.3990 FG-ARI=0.2674
+[epoch 27] mBO_i=0.3623 mBO_c=0.3939 FG-ARI=0.2550
+[epoch 28] mBO_i=0.3594 mBO_c=0.3909 FG-ARI=0.2513
+[epoch 29] mBO_i=0.3698 mBO_c=0.3961 FG-ARI=0.2752
+[epoch 30] mBO_i=0.3712 mBO_c=0.3957 FG-ARI=0.2653
+[epoch 31] mBO_i=0.3613 mBO_c=0.3893 FG-ARI=0.2482
+[epoch 32] mBO_i=0.3602 mBO_c=0.3884 FG-ARI=0.2516
+[epoch 33] mBO_i=0.3712 mBO_c=0.4014 FG-ARI=0.2604
+[epoch 34] mBO_i=0.3666 mBO_c=0.4005 FG-ARI=0.2614
+[epoch 35] mBO_i=0.3662 mBO_c=0.3929 FG-ARI=0.2562
+[epoch 36] mBO_i=0.3724 mBO_c=0.4073 FG-ARI=0.2650
+[epoch 37] mBO_i=0.3687 mBO_c=0.4016 FG-ARI=0.2520
+[epoch 38] mBO_i=0.3639 mBO_c=0.3965 FG-ARI=0.2727
+[epoch 39] mBO_i=0.3694 mBO_c=0.4009 FG-ARI=0.2650
+=== DONE ===

@@ -1,0 +1,13 @@
+# PASCAL VOC 2012 config. Inherits base; the patch grid is derived from the backbone
+# at runtime (DINOv3 ViT-S/16 @ 224 -> 14x14), so no grid_size is set here.
+defaults:
+  - base
+  - _self_
+
+# VOC-specific tweaks live here. Defaults are already tuned for VOC in base.yaml;
+# this file exists so experiments can be launched as `--config-name pascal_voc`.
+data:
+  batch_size: 32
+
+optim:
+  epochs: 50

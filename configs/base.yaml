@@ -1,0 +1,60 @@
+# Base Hydra config for DINO-TRM. Override with command-line, e.g.:
+#   uv run python -m dino_trm.train mode=trm log.wandb=false
+defaults:
+  - _self_
+
+seed: 0
+mode: baseline          # baseline (Phase 1) | trm (Phase 2) | coupled (Phase 3)
+device: cuda
+
+model:
+  model_id: facebook/dinov3-vits16-pretrain-lvd1689m
+  num_slots: 7
+  slot_dim: 256
+  slot_iters: 3
+  decoder_hidden: 1024
+  decoder_layers: 4
+  n_steps: 8            # TRM recursion depth (used by trm/coupled)
+  gnn_layers: 2
+  gnn_heads: 4
+  n_latent_steps: 1
+  gnn_combine: concat    # how TinyGNN fuses (x,y,z): "concat" (learned routing) | "sum"
+  image_size: 336        # 21x21 = 441 patches (vs 14x14 @224); finer masks, ~7.8GB
+  target_norm: false     # OFF: per-image feature standardisation flattened the alpha
+                         # masks (blurry, low mBO). Raw features give crisp slots.
+
+data:
+  batch_size: 32
+  num_workers: 8
+  image_size: 336
+  cache_dir: null
+  large_train: false      # true = 15.6k leakage-free VOC image-only set (needs build_train_index.py)
+
+optim:
+  lr: 4.0e-4
+  weight_decay: 0.0
+  warmup_steps: 300
+  epochs: 80
+  grad_clip: 1.0         # recursion can blow up gradients; clip at 1.0
+  grad_accum: 1
+
+loss:
+  intermediate_weight: 0.25   # deep supervision weight on intermediate steps
+  final_weight: 1.0
+  entropy_weight: 0.0         # >0 sharpens per-patch slot assignment (NOT anti-collapse)
+  balance_weight: 0.0         # >0 anti-collapse via marginal slot usage (symptom-level)
+  query_ortho_weight: 0.0     # >0 anti-collapse at the ROOT: decorrelate slot queries (Phase 3)
+  query_ortho_margin: 0.0     # >0 = hinge; only penalise query pairs closer than this cosine distance
+  act_weight: 0.0             # >0 to enable ACT halting loss
+
+log:
+  wandb: true
+  project: dino-trm
+  run_name: null
+  mode: online
+  viz_every: 500              # log recursion-evolution figure every N steps
+  eval_every_epochs: 1
+  ckpt_dir: checkpoints
+
+eval:
+  max_batches: null           # cap val batches for speed; null = full val
