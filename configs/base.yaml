@@ -25,6 +25,8 @@ model:
                          # masks (blurry, low mBO). Raw features give crisp slots.
 
 data:
+  dataset: voc            # voc | coco (COCO = multi-object occlusion-rich subset)
+  coco_root: data/coco    # where build_coco_subset.py wrote the curated subset
   batch_size: 32
   num_workers: 8
   image_size: 336

@@ -9,7 +9,7 @@ wheels/
 # Virtual environments
 .venv
 references/
-data/
+/data/
 
 # Model checkpoints (8.9G, regenerable from the training recipe)
 checkpoints/
@@ -19,3 +19,6 @@ outputs/
 
 # Intermediate training-progress mask snapshots (keep only *_final.png)
 results/**/masks_step*.png
+
+# Transient COCO download progress log
+results/coco_download.log

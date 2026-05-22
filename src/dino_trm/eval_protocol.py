@@ -101,7 +101,12 @@ def evaluate_protocol(model, loader, device, max_batches: int | None = None) -> 
         for b in range(px.shape[0]):
             sem = batch["label_full"][b].numpy().copy()
             sem[sem == 255] = 0                       # void -> background
-            inst = semantic_to_instance(sem)
+            # Use TRUE instance masks when the dataset provides them (COCO); otherwise
+            # derive instances from the semantic map via connected components (VOC).
+            if "inst_full" in batch:
+                inst = batch["inst_full"][b].numpy()
+            else:
+                inst = semantic_to_instance(sem)
             cls_ids = [c for c in np.unique(sem) if c != 0]
             inst_ids = [i for i in np.unique(inst) if i != 0]
 

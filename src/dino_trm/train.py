@@ -56,32 +56,53 @@ def main(cfg: DictConfig) -> None:
     grid_size = model.backbone.grid_size
     print(f"mode={cfg.mode} grid={grid_size} num_patches={model.num_patches}")
 
-    if cfg.data.get("large_train", False):
-        train_loader = build_imageonly_loader(
+    dataset = cfg.data.get("dataset", "voc")
+    if dataset == "coco":
+        from .data.coco import build_coco_loader
+        coco_root = cfg.data.get("coco_root", "data/coco")
+        train_loader = build_coco_loader(
+            split="train",
             batch_size=cfg.data.batch_size,
             image_size=cfg.data.image_size,
             num_workers=cfg.data.num_workers,
-            cache_dir=cfg.data.cache_dir,
+            root=coco_root,
         )
-        print(f"train set: VOC image-only (leakage-free), {len(train_loader.dataset)} images")
+        val_loader = build_coco_loader(
+            split="val",
+            batch_size=cfg.data.batch_size,
+            image_size=cfg.data.image_size,
+            num_workers=cfg.data.num_workers,
+            root=coco_root,
+        )
+        print(f"train set: COCO multi-object subset, {len(train_loader.dataset)} images; "
+              f"val {len(val_loader.dataset)} images")
     else:
-        train_loader = build_loader(
-            split="train",
+        if cfg.data.get("large_train", False):
+            train_loader = build_imageonly_loader(
+                batch_size=cfg.data.batch_size,
+                image_size=cfg.data.image_size,
+                num_workers=cfg.data.num_workers,
+                cache_dir=cfg.data.cache_dir,
+            )
+            print(f"train set: VOC image-only (leakage-free), {len(train_loader.dataset)} images")
+        else:
+            train_loader = build_loader(
+                split="train",
+                batch_size=cfg.data.batch_size,
+                image_size=cfg.data.image_size,
+                grid_size=grid_size,
+                num_workers=cfg.data.num_workers,
+                cache_dir=cfg.data.cache_dir,
+            )
+        val_loader = build_loader(
+            split="val",
             batch_size=cfg.data.batch_size,
             image_size=cfg.data.image_size,
             grid_size=grid_size,
             num_workers=cfg.data.num_workers,
             cache_dir=cfg.data.cache_dir,
+            full_mask=True,  # published-protocol eval needs image-resolution masks
         )
-    val_loader = build_loader(
-        split="val",
-        batch_size=cfg.data.batch_size,
-        image_size=cfg.data.image_size,
-        grid_size=grid_size,
-        num_workers=cfg.data.num_workers,
-        cache_dir=cfg.data.cache_dir,
-        full_mask=True,  # published-protocol eval needs image-resolution masks
-    )
 
     params = [p for p in model.parameters() if p.requires_grad]
     n_trainable = sum(p.numel() for p in params)
