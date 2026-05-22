@@ -22,3 +22,4 @@ results/**/masks_step*.png
 
 # Transient COCO download progress log
 results/coco_download.log
+results/coco_train.log
