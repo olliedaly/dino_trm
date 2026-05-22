@@ -128,7 +128,10 @@ def main(cfg: DictConfig) -> None:
     os.makedirs(cfg.log.ckpt_dir, exist_ok=True)
 
     # Local results dir (independent of wandb): metrics history + figures.
-    results_dir = os.path.join("results", cfg.mode)
+    # Namespace by dataset so COCO runs don't clobber the VOC figures/metrics
+    # (and vice versa); VOC keeps the original flat path for back-compat.
+    run_tag = cfg.mode if dataset == "voc" else os.path.join(dataset, cfg.mode)
+    results_dir = os.path.join("results", run_tag)
     os.makedirs(results_dir, exist_ok=True)
     metrics_history: list[dict] = []
 
