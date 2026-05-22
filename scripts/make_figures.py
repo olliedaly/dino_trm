@@ -8,11 +8,14 @@ After training, for each available mode this:
   * saves slot-mask evolution figures for 4 fixed val images (coupled if present,
     else the deepest-recursion model available).
 
-Run:  uv run python scripts/make_figures.py
+Run:
+    uv run python scripts/make_figures.py                  # VOC (checkpoints/, results/)
+    uv run python scripts/make_figures.py --dataset coco   # COCO (checkpoints/coco, results/coco)
 """
 
 from __future__ import annotations
 
+import argparse
 import glob
 import json
 import os
@@ -24,22 +27,29 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
 
-from dino_trm.data.pascal_voc import build_loader
 from dino_trm.eval_protocol import evaluate_protocol
 from dino_trm.models.full_model import DinoSlotModel
 from dino_trm.utils.viz import recursion_evolution_figure
 
 MODES = ["baseline", "trm", "coupled"]
-CKPT_DIR = "checkpoints"
-RESULTS = "results"
 DEVICE = "cuda"
 
 
-def latest_ckpt(mode: str) -> str | None:
-    paths = glob.glob(os.path.join(CKPT_DIR, f"{mode}_epoch*.pt"))
+def latest_ckpt(ckpt_dir: str, mode: str) -> str | None:
+    paths = glob.glob(os.path.join(ckpt_dir, f"{mode}_epoch*.pt"))
     if not paths:
         return None
     return max(paths, key=lambda p: int(re.search(r"epoch(\d+)", p).group(1)))
+
+
+def build_val_loader(dataset: str):
+    if dataset == "coco":
+        from dino_trm.data.coco import build_coco_loader
+        return build_coco_loader(split="val", batch_size=16, num_workers=4,
+                                 shuffle=False, return_masks=True)
+    from dino_trm.data.pascal_voc import build_loader
+    return build_loader(split="val", batch_size=16, num_workers=4,
+                        shuffle=False, full_mask=True)
 
 
 def load_model(ckpt_path: str):
@@ -52,13 +62,19 @@ def load_model(ckpt_path: str):
 
 
 def main() -> None:
-    os.makedirs(RESULTS, exist_ok=True)
-    val_loader = build_loader(split="val", batch_size=16, num_workers=4, shuffle=False, full_mask=True)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset", choices=["voc", "coco"], default="voc")
+    args = ap.parse_args()
+    ckpt_dir = "checkpoints" if args.dataset == "voc" else os.path.join("checkpoints", args.dataset)
+    results = "results" if args.dataset == "voc" else os.path.join("results", args.dataset)
+
+    os.makedirs(results, exist_ok=True)
+    val_loader = build_val_loader(args.dataset)
 
     summary = {}
     models = {}
     for mode in MODES:
-        ck = latest_ckpt(mode)
+        ck = latest_ckpt(ckpt_dir, mode)
         if ck is None:
             print(f"[skip] no checkpoint for {mode}")
             continue
@@ -76,7 +92,7 @@ def main() -> None:
         print(f"{mode:9s} mBO_i={metrics['mbo_i']:.4f} mBO_c={metrics['mbo_c']:.4f} "
               f"FG-ARI={metrics['fg_ari']:.4f}")
 
-    with open(os.path.join(RESULTS, "summary.json"), "w") as f:
+    with open(os.path.join(results, "summary.json"), "w") as f:
         json.dump(summary, f, indent=2)
 
     # --- Figure 1: FG-ARI vs recursion depth ---
@@ -93,9 +109,9 @@ def main() -> None:
     ax.legend()
     ax.grid(alpha=0.3)
     fig.tight_layout()
-    fig.savefig(os.path.join(RESULTS, "fg_ari_vs_depth.png"), dpi=130)
+    fig.savefig(os.path.join(results, "fg_ari_vs_depth.png"), dpi=130)
     plt.close(fig)
-    print(f"saved {RESULTS}/fg_ari_vs_depth.png")
+    print(f"saved {results}/fg_ari_vs_depth.png")
 
     # --- Figure 2: slot-mask evolution for 4 fixed val images ---
     viz_mode = "coupled" if "coupled" in models else ("trm" if "trm" in models else None)
@@ -109,10 +125,10 @@ def main() -> None:
                 out = model(px)
             masks = [m[0] for m in out["masks_list"]]
             fig = recursion_evolution_figure(px[0], masks, grid)
-            fig.savefig(os.path.join(RESULTS, f"qualitative_{viz_mode}_img{i}.png"),
+            fig.savefig(os.path.join(results, f"qualitative_{viz_mode}_img{i}.png"),
                         dpi=110, bbox_inches="tight")
             plt.close(fig)
-        print(f"saved {RESULTS}/qualitative_{viz_mode}_img*.png ({viz_mode})")
+        print(f"saved {results}/qualitative_{viz_mode}_img*.png ({viz_mode})")
 
 
 if __name__ == "__main__":
