@@ -33,6 +33,7 @@ class TRMReasoner(nn.Module):
         gnn_heads: int = 4,
         n_latent_steps: int = 1,
         gnn_combine: str = "concat",
+        gnn_cross_attn: bool = False,
     ) -> None:
         super().__init__()
         self.n_steps = n_steps
@@ -43,6 +44,7 @@ class TRMReasoner(nn.Module):
             n_heads=gnn_heads,
             n_latent_steps=n_latent_steps,
             combine=gnn_combine,
+            cross_attn=gnn_cross_attn,
         )
         # Learned latent initialisation.
         self.z0 = nn.Parameter(torch.zeros(1, 1, slot_dim))
@@ -62,9 +64,14 @@ class TRMReasoner(nn.Module):
     def forward(
         self,
         x: torch.Tensor,                                  # (B, K, slot_dim) initial slots
+        patches: torch.Tensor | None = None,              # (B, N, slot_dim) patch features
         rebind: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ) -> dict:
-        """Returns per-step lists: 'y' (refined slots), 'z' (latents), 'halt' (logits)."""
+        """Returns per-step lists: 'y' (refined slots), 'z' (latents), 'halt' (logits).
+
+        ``patches`` is forwarded to the TinyGNN every step so the slots can re-read the
+        image via cross-attention (no-op unless the GNN was built with cross_attn).
+        """
         y = x
         z = self.init_latent(x)
 
@@ -77,7 +84,7 @@ class TRMReasoner(nn.Module):
             if rebind is not None:
                 # Fresh binding also reseeds the answer stream for this step.
                 y = x_t if not ys else y
-            y, z = self.tiny_gnn(x_t, y, z)
+            y, z = self.tiny_gnn(x_t, y, z, patches)
             # Halting score in fp32 for numerical stability over the recursion.
             halt = self.halt_head(z.float()).mean(dim=1)  # (B, 1)
             ys.append(y)

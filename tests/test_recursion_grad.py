@@ -120,3 +120,50 @@ def test_coupled_rebind_grad_to_slot_attention():
 
     assert sa.z_to_slot.weight.grad is not None
     assert sa.z_to_slot.weight.grad.norm().item() > 0
+
+
+def test_cross_attn_grad_to_patches_and_params():
+    """Step 1: with gnn_cross_attn, a synthetic `patches` tensor flows through the
+    recursion — gradient must reach the cross-attn params, the patch features, and
+    still reach z0 (full BPTT preserved)."""
+    torch.manual_seed(0)
+    reasoner = TRMReasoner(slot_dim=SLOT_DIM, n_steps=T, gnn_layers=2, gnn_cross_attn=True)
+    decoder = SpatialBroadcastDecoder(slot_dim=SLOT_DIM, feature_dim=FEAT, num_patches=N)
+    for head in (reasoner.tiny_gnn.to_y, reasoner.tiny_gnn.to_z):
+        torch.nn.init.normal_(head.weight, std=0.1)
+        torch.nn.init.normal_(head.bias, std=0.1)
+
+    slots0 = torch.randn(2, K, SLOT_DIM)
+    patches = torch.randn(2, N, SLOT_DIM, requires_grad=True)
+    target = torch.randn(2, N, FEAT)
+
+    out = reasoner(slots0, patches=patches)
+    # Final-step-only loss again, so a non-zero z0 grad proves BPTT through all T steps
+    # even with the cross-attn path active.
+    loss = torch.nn.functional.mse_loss(decoder(out["y"][-1])[0], target)
+    loss.backward()
+
+    # The cross-attn sublayers in every block must receive gradient.
+    cross_params = [
+        (name, p)
+        for name, p in reasoner.tiny_gnn.named_parameters()
+        if "cross_attn" in name or "norm_cq" in name or "norm_ckv" in name
+    ]
+    assert cross_params, "cross-attn params missing -> flag not wired"
+    missing = [n for n, p in cross_params if p.grad is None or p.grad.norm().item() == 0]
+    assert not missing, f"cross-attn params with no gradient: {missing}"
+
+    # Gradient flows back into the patch features (slots actually read them).
+    assert patches.grad is not None and patches.grad.norm().item() > 0
+    # Full BPTT still intact.
+    assert reasoner.z0.grad is not None and reasoner.z0.grad.norm().item() > 0
+
+
+def test_cross_attn_off_ignores_patches():
+    """Default (cross_attn off) must run identically whether or not patches are passed."""
+    sa, reasoner, decoder, proj, target = _setup()
+    slots0, _ = sa(proj)
+    patches = torch.randn(2, N, SLOT_DIM)
+    out_with = reasoner(slots0, patches=patches)
+    out_without = reasoner(slots0)
+    assert torch.allclose(out_with["y"][-1], out_without["y"][-1])

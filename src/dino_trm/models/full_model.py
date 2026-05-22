@@ -39,6 +39,7 @@ class DinoSlotModel(nn.Module):
         gnn_heads: int = 4,
         n_latent_steps: int = 1,
         gnn_combine: str = "concat",
+        gnn_cross_attn: bool = False,
         image_size: int = 336,
         target_norm: bool = True,
         dtype: torch.dtype = torch.bfloat16,
@@ -79,6 +80,7 @@ class DinoSlotModel(nn.Module):
                 gnn_heads=gnn_heads,
                 n_latent_steps=n_latent_steps,
                 gnn_combine=gnn_combine,
+                gnn_cross_attn=gnn_cross_attn,
             )
             if mode in {"trm", "coupled"}
             else None
@@ -117,7 +119,7 @@ class DinoSlotModel(nn.Module):
                 queries.append(q)  # regularise the z-conditioned queries each step
                 return slots
 
-        out = self.reasoner(slots0, rebind=rebind)
+        out = self.reasoner(slots0, patches=proj, rebind=rebind)
 
         recons, masks_list = [], []
         for y in out["y"]:

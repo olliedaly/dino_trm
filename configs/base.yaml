@@ -19,6 +19,7 @@ model:
   gnn_heads: 4
   n_latent_steps: 1
   gnn_combine: concat    # how TinyGNN fuses (x,y,z): "concat" (learned routing) | "sum"
+  gnn_cross_attn: false  # true = slots re-read patches via cross-attn each step (Step 1)
   image_size: 336        # 21x21 = 441 patches (vs 14x14 @224); finer masks, ~7.8GB
   target_norm: false     # OFF: per-image feature standardisation flattened the alpha
                          # masks (blurry, low mBO). Raw features give crisp slots.
