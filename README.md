@@ -152,6 +152,10 @@ intact, which `tests/test_recursion_grad.py` verifies.
   uses ACT-style halting so depth varies per sample at training time. The halting
   head and ACT loss are wired up here (`losses.act_halting_loss`, `loss.act_weight`)
   but kept at 0 in every reported run.
+- **Parameter-count confound.** The `trm` and `coupled` variants have ~64% more
+  trainable parameters than baseline (6.4M vs 3.9M), so part of the mBO gain over
+  baseline may come from the extra capacity rather than the recursion itself, and we
+  don't have a parameter-matched, single-pass control to isolate this.
 
 ## Future work
 
