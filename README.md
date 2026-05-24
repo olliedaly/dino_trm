@@ -32,6 +32,43 @@ Three modes select the phase: `baseline` (Phase 1, slot attention once), `trm`
 (Phase 2, recursion refines slots), `coupled` (Phase 3, slot attention re-binds with
 `z` each step — the novel contribution).
 
+## Results
+
+**Headline:** moving from clean PASCAL VOC to an **occlusion-rich COCO multi-object
+subset** and grounding the recursion in patches (slot→patch cross-attention) **doubles
+the recursion gain over baseline** and turns the foreground grouping score (flat on
+VOC) into a +4 signal — exactly the regime the design was meant for.
+
+### COCO multi-object subset — 3-seed averaged, full 2k val, true instance masks
+
+| Model | per-instance IoU (mBO_i) | per-class IoU (mBO_c) | foreground grouping (FG-ARI) |
+|---|:--:|:--:|:--:|
+| baseline | 22.9 ±0.1 | 28.6 ±0.1 | 42.5 ±0.2 |
+| **trm + cross-attn** | **25.2 ±0.0** | **31.0 ±0.1** | 46.7 ±0.1 |
+| **coupled + cross-attn** | 25.1 ±0.0 | 30.9 ±0.0 | **47.2 ±0.1** |
+| _DINOSAUR (full COCO, reported / reproduction)_ | _26.1 / 28.0_ | _30.0 / 31.7_ | _39.4 / 40.2_ |
+
+(Std ≈ 0 across seeds → all gaps are well above noise. Recursion gain ≈ +2.3 mBO vs
+~+1 on clean VOC; foreground grouping moves +4.2 to +4.7 where it was flat on VOC.
+**coupled** sits above **trm** at every recursion depth on grouping (see
+[`results/coco/fg_ari_vs_depth.png`](results/coco/fg_ari_vs_depth.png)); they tie on
+mBO. Our subset is curated multi-object so the DINOSAUR reference row is a regime
+check, not like-for-like.)
+
+### Qualitative — where the coupled feedback loop actually wins
+
+The 5 val images where **coupled + cross-attn** beats the baseline most on the
+foreground grouping score:
+
+![Top 5 winners: coupled+xattn vs baseline on COCO val](results/coco/diagnostics/coupled_vs_baseline_winners.png)
+
+Pattern: scenes with **a few similar / touching objects** (3 urinals, 3 zebras, 3
+surfers) that baseline collapses into one slot but coupled's rebinding feedback
+splits — exactly the "tank track + turret → tank" regime the design is for.
+Honest counter-cases (where baseline wins) and full discussion are in
+[`RESULTS.md`](RESULTS.md); the diagnostic figure was produced by
+[`scripts/coupled_vs_baseline_visuals.py`](scripts/coupled_vs_baseline_visuals.py).
+
 ## Environment
 
 - Fedora, RTX 5060 Ti 16GB (Blackwell sm_120), CUDA 12.8, **PyTorch 2.11+cu128**.
