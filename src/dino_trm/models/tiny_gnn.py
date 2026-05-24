@@ -20,7 +20,7 @@ updates of z then y (TRM-style: latent updated, then answer read out from it).
 When ``cross_attn`` is enabled each block also lets the slots re-read the patch
 features (slot→patch cross-attention) on top of slot↔slot self-attention, so the
 recursion stays grounded in the image rather than reasoning blind over 7 vectors after
-the initial binding (Step 1 of NEXT_STEPS.md).
+the initial binding.
 """
 
 from __future__ import annotations
