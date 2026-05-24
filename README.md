@@ -38,7 +38,9 @@ per-pixel slot id, which is what we score against ground-truth segmentation.
 All share the backbone, slot attention, decoder, and reconstruction loss. They differ
 in what sits between slot attention and the decoder:
 
-- **`baseline`**: nothing. Decode directly from one pass of slot attention.
+- **`baseline`**: nothing. Decode directly from the slot-attention output above
+  (one invocation of the module, which itself runs the standard 3 internal
+  attend-and-GRU iterations). This is the DINOSAUR baseline.
 - **`trm`**: an 8-step recursion that refines the 7 slot vectors. Each step is a
   small pre-norm transformer over the 7 slot tokens (self-attention + FFN). With
   `model.gnn_cross_attn=true`, each step also includes a cross-attention layer where
