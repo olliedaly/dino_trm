@@ -1,9 +1,7 @@
 # DINO-TRM
 
 A slot-attention object discovery model on top of frozen DINOv3 features. Trained
-unsupervised to reconstruct the DINOv3 patch features — the feature-reconstruction
-objective from DINOSAUR (Seitzer et al. 2023) — and the per-pixel argmax of the
-resulting slot masks is used as a segmentation. The `trm` and `coupled` modes add a
+unsupervised to reconstruct the DINOv3 patch features as per DINOSAUR (Seitzer et al. 2023). This work adds a
 recursive reasoning module over the slot vectors in the style of the Tiny Recursive
 Model (TRM, Jolicoeur-Martineau et al. 2025); `coupled` additionally re-runs slot
 attention each step, testing whether iteration helps separate touching or overlapping
@@ -50,8 +48,7 @@ in what sits between slot attention and the decoder:
   cross-attention layer where the slots re-read the 441 patch features (query =
   slots, key/value = patches), so the recursion isn't blind to the image after the
   initial binding. Full backpropagation through time (BPTT) across all 8 steps
-  (`tests/test_recursion_grad.py` verifies this). The patch-to-slot assignment from
-  the initial slot attention is not changed; only the slot vectors themselves move.
+  (`tests/test_recursion_grad.py` verifies this).
   Sources: `models/tiny_gnn.py`, `models/trm_module.py`.
 - **`coupled`**: same as `trm`, plus at every recursion step slot attention is
   *re-run* on the patches, conditioned on the current slot vectors. So patches that
