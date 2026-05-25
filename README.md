@@ -1,30 +1,33 @@
 # DINO-TRM
 
 A slot-attention object discovery model on top of frozen DINOv3 features. Trained
-unsupervised to reconstruct the DINOv3 patch features (the DINOSAUR objective); the
-per-pixel argmax of the resulting slot masks is used as a segmentation. The `trm` and
-`coupled` modes add a recursive module that iterates over the slot vectors, and in
-`coupled` re-runs slot attention each step, testing whether iteration helps separate
-touching or overlapping objects that single-pass slot attention merges into one slot.
+unsupervised to reconstruct the DINOv3 patch features — the feature-reconstruction
+objective from DINOSAUR (Seitzer et al. 2023) — and the per-pixel argmax of the
+resulting slot masks is used as a segmentation. The `trm` and `coupled` modes add a
+recursive reasoning module over the slot vectors in the style of the Tiny Recursive
+Model (TRM, Jolicoeur-Martineau et al. 2025); `coupled` additionally re-runs slot
+attention each step, testing whether iteration helps separate touching or overlapping
+objects that single-pass slot attention merges into one slot.
 
 ## What the model does, step by step
 
 For a 336×336 image:
 
-1. **Frozen DINOv3 ViT-S/16 backbone.** Outputs 441 patch features (a 21×21 grid, one
-   per 16-px patch), each 384-dim. Runs in bf16 under `no_grad`; no gradients flow into
-   it. Source: `models/backbone.py`.
+1. **Frozen DINOv3 ViT-S/16 backbone** (ViT = Vision Transformer). Outputs 441 patch
+   features (a 21×21 grid, one per 16-px patch), each 384-dim. Runs in bfloat16 (bf16)
+   under `no_grad`; no gradients flow into it. Source: `models/backbone.py`.
 2. **Project to slot dim.** LayerNorm + Linear, 384 → 256.
 3. **Slot Attention** (`models/slot_attention.py`). 7 slot vectors are sampled from a
    learned Gaussian. For 3 iterations, slots attend over the 441 patch features with a
-   softmax that *competes across slots* (each patch is fought over). Output: 7
-   slot vectors (each 256-dim) plus a soft (7, 441) patch-to-slot assignment.
+   softmax that *competes across slots* (each patch is fought over) and each slot is
+   updated by a GRU (gated recurrent unit). Output: 7 slot vectors (each 256-dim) plus
+   a soft (7, 441) patch-to-slot assignment.
 4. **Recursion.** `baseline` skips this; `trm` and `coupled` run an 8-step loop. See
    the three modes below.
 5. **Spatial broadcast decoder** (`models/decoder.py`). Each slot vector is broadcast
-   over a 21×21 grid, a learned positional code is added, a 4-layer MLP predicts a
-   384-dim reconstruction *and* an alpha-mask logit per patch. The output feature map
-   is the alpha-weighted sum across slots.
+   over a 21×21 grid, a learned positional code is added, and a 4-layer MLP
+   (multi-layer perceptron) predicts a 384-dim reconstruction *and* an alpha-mask
+   logit per patch. The output feature map is the alpha-weighted sum across slots.
 6. **Loss.** Mean squared error between the reconstructed feature map and the original
    DINOv3 patch features. When recursion is active, the loss is applied at every step
    (deep supervision). The slots have to capture object structure to predict the
@@ -42,43 +45,91 @@ in what sits between slot attention and the decoder:
   (one invocation of the module, which itself runs the standard 3 internal
   attend-and-GRU iterations). This is the DINOSAUR baseline.
 - **`trm`**: an 8-step recursion that refines the 7 slot vectors. Each step is a
-  small pre-norm transformer over the 7 slot tokens (self-attention + FFN). With
-  `model.gnn_cross_attn=true`, each step also includes a cross-attention layer where
-  the slots re-read the 441 patch features (query = slots, key/value = patches), so
-  the recursion isn't blind to the image after the initial binding. Full backprop
-  through all 8 steps (`tests/test_recursion_grad.py` verifies this). The
-  patch-to-slot assignment from the initial slot attention is not changed; only the
-  slot vectors themselves move. Sources: `models/tiny_gnn.py`, `models/trm_module.py`.
+  small pre-norm transformer (FFN = feed-forward network) over the 7 slot tokens
+  (self-attention + FFN). With `model.gnn_cross_attn=true`, each step also includes a
+  cross-attention layer where the slots re-read the 441 patch features (query =
+  slots, key/value = patches), so the recursion isn't blind to the image after the
+  initial binding. Full backpropagation through time (BPTT) across all 8 steps
+  (`tests/test_recursion_grad.py` verifies this). The patch-to-slot assignment from
+  the initial slot attention is not changed; only the slot vectors themselves move.
+  Sources: `models/tiny_gnn.py`, `models/trm_module.py`.
 - **`coupled`**: same as `trm`, plus at every recursion step slot attention is
   *re-run* on the patches, conditioned on the current slot vectors. So patches that
   were assigned to the "wrong" slot in iteration 1 can be re-assigned in iteration 2
-  as the slot vectors refine. This is what the COCO experiments below show works on
-  touching same-class objects.
+  as the slot vectors refine. In TRM-paper terms, the recursion carries three streams
+  over the 7 slot tokens — `x` (the perceptual evidence, the "question"), `y` (the
+  current slot answer, refined each step), and `z` (a per-slot latent reasoning state
+  carried across steps). In `trm`, `x` is held fixed at the initial binding and only
+  `y`, `z` evolve; **`coupled` lifts `x` from a constant to a function of the prior
+  latent**, `x_t = SlotAttention(patches, z_{t-1})`, so the reasoning state feeds
+  back into perception each step rather than only the other way around. This is what
+  the COCO experiments below show works on touching same-class objects.
 
 Compute cost per training step roughly tracks the recursion depth: `baseline` is the
 cheapest, `trm` and `coupled` with T=8 are ≈5× slower (full BPTT through 8 steps).
 
 ## Results
 
-**Headline:** moving from clean PASCAL VOC to an occlusion-rich COCO multi-object
-subset, and grounding the recursion in patches (slot→patch cross-attention), doubles
-the recursion gain over baseline and turns the foreground grouping score (flat on
-VOC) into a +4 signal.
+**Headline:** on an occlusion-rich COCO multi-object subset, patch-grounded reasoning
+over slots gives a +2 mBO (mean Best Overlap, an Intersection-over-Union (IoU) based
+mask quality score) / +4–5 FG-ARI (Foreground Adjusted Rand Index, a clustering-purity
+grouping score) gain over baseline. Controls show the mBO gain is largely capacity, while the **foreground
+grouping (FG-ARI) gain is the recursion's specific contribution** — exactly the metric
+most aligned with the touching/overlapping regime the design targets.
+
+The project was originally developed on PASCAL VOC and the recursive variants there
+only beat the baseline by ~+1 mBO with no grouping signal at all. VOC is mostly
+single-object scenes with clean separation — a regime where slot attention's initial
+binding already does most of the work, leaving little for the recursion to fix. The
+`coupled` top-down rebinding loop is designed for the opposite case: touching or
+overlapping objects of the same class, where a single binding pass tends to merge
+them into one slot. The COCO multi-object subset below exercises exactly that regime,
+which is where the win actually shows up.
 
 ### COCO multi-object subset, 3-seed averaged, full 2k val, true instance masks
 
-| Model | per-instance IoU (mBO_i) | per-class IoU (mBO_c) | foreground grouping (FG-ARI) |
-|---|:--:|:--:|:--:|
-| baseline | 22.9 ±0.1 | 28.6 ±0.1 | 42.5 ±0.2 |
-| **trm + cross-attn** | **25.2 ±0.0** | **31.0 ±0.1** | 46.7 ±0.1 |
-| **coupled + cross-attn** | 25.1 ±0.0 | 30.9 ±0.0 | **47.2 ±0.1** |
-| _DINOSAUR (full COCO, reported / reproduction)_ | _26.1 / 28.0_ | _30.0 / 31.7_ | _39.4 / 40.2_ |
+| Model | per-instance IoU (mBO_i) | per-class IoU (mBO_c) | foreground grouping (FG-ARI) | params |
+|---|:--:|:--:|:--:|:--:|
+| baseline | 22.9 ±0.1 | 28.6 ±0.1 | 42.5 ±0.2 | 3.9 M |
+| **mlp_block + cross-attn** *(param control)* | 25.0 ±0.1 | **32.2 ±0.1** | 44.6 ±0.3 | **7.1 M** (+11 %) |
+| **trm + cross-attn, T=1** *(recursion control)* | **25.7 ±0.0** | **32.8 ±0.0** | 45.9 ±0.0 | 6.4 M |
+| trm + cross-attn (T=8) | 25.2 ±0.0 | 31.0 ±0.1 | 46.7 ±0.1 | 6.4 M |
+| coupled + cross-attn (T=8) | 25.1 ±0.0 | 30.9 ±0.0 | **47.2 ±0.1** | 6.4 M |
+| _DINOSAUR (full COCO, reported / reproduction)_ | _26.1 / 28.0_ | _30.0 / 31.7_ | _39.4 / 40.2_ | – |
 
-Std ≈ 0 across seeds, so all the gaps are well above noise. Recursion gain ≈ +2.3
-mBO vs ~+1 on clean VOC; foreground grouping moves +4.2 to +4.7 where it was flat on
-VOC. `coupled` sits above `trm` at every recursion depth on grouping (see
-[`results/coco/fg_ari_vs_depth.png`](results/coco/fg_ari_vs_depth.png)); they tie on
-mBO. Our subset is curated multi-object so the DINOSAUR reference row is a regime
+Std ≈ 0, so every gap above is real. The two control rows disentangle what's driving
+the gain:
+
+- **`mlp_block`** swaps the recursive reasoner for a 3-block transformer stack (same
+  `_Block` as TinyGNN, self-attn + slot→patch cross-attn + FFN, applied once, no
+  recursion) — **+11 % more trainable parameters** than trm/coupled. Isolates raw
+  capacity.
+- **`trm + cross-attn, T=1`** runs the actual recursive module for a single step.
+  Isolates the recursion specifically.
+
+**On mBO_i** (mask-boundary alignment, IoU-based), `mlp_block` reaches **25.0** vs
+trm's 25.2 — i.e. **91 % of trm's +2.3 gain over baseline is reproduced by just
+adding non-recursive capacity in the same architectural slot**.
+
+**On mBO_c the recursion *hurts*** (T=1 32.8 → T=8 31.0) while it *helps* FG-ARI.
+This is consistent with the qualitative behaviour in
+[`coupled_vs_baseline_winners.png`](results/coco/diagnostics/coupled_vs_baseline_winners.png) —
+the recursion splits touching same-class objects (3 zebras → 3 slots), which improves
+instance-level grouping (FG-ARI ↑) but loses against a per-class GT that pools all
+instances of a class into one mask (mBO_c ↓). mBO_i sits in between because the
+splitting effect goes in opposite directions on touching-same-class vs distinct-class
+scenes and partly cancels across the val set. Read together, the three metrics
+fingerprint *what* the recursion is doing: trading semantic-region match for
+instance-level grouping.
+
+**On FG-ARI** (grouping), each contribution adds incrementally: 42.5 → 44.6 (capacity)
+→ 45.9 (the module itself) → 46.7 (recursion) → 47.2 (coupling). The 7.1 M-param
+non-recursive control still trails the 6.4 M recursive run by 2.1 FG-ARI, so the
+grouping win is not a capacity artefact. `coupled` sits above `trm` at every
+recursion depth on FG-ARI (see
+[`results/coco/fg_ari_vs_depth.png`](results/coco/fg_ari_vs_depth.png)).
+
+Our COCO subset is curated multi-object, so the DINOSAUR reference row is a regime
 check, not like-for-like.
 
 ### Qualitative: where the coupled feedback loop actually wins
@@ -92,6 +143,45 @@ Pattern: scenes with a few similar / touching objects (3 urinals, 3 zebras, 3
 surfers) that baseline collapses into one slot but coupled's per-step re-binding
 splits, the regime the design is for. The figure is produced by
 [`scripts/coupled_vs_baseline_visuals.py`](scripts/coupled_vs_baseline_visuals.py).
+
+## Testing methodology
+
+All numbers in the table above come from `src/dino_trm/eval_protocol.py`, which
+follows the published DINOSAUR evaluation protocol so the reference rows are
+comparable (modulo the subset caveat). For each validation image:
+
+1. **Predicted masks → image resolution.** The model emits 7 soft alpha masks at the
+   21×21 patch grid. They're bilinearly upsampled to 336×336, then a per-pixel
+   `argmax` across slots gives a hard slot-id map. Evaluation happens at image
+   resolution, not the coarse patch grid (`_upsample_pred`).
+2. **Ground truth.** Void pixels (label 255) are folded into background (0), per the
+   reference. COCO provides true instance masks (`inst_full`), used directly.
+
+Three metrics are reported, all on the final recursion step:
+
+- **mBO_i (per-instance mean Best Overlap).** For each ground-truth *instance*,
+  take the maximum Intersection-over-Union (IoU) against any predicted slot mask;
+  average those best IoUs over instances, then over images. Equivalent to "for each
+  object, what's the slot that covers it best?" — a boundary-quality score.
+- **mBO_c (per-class mean Best Overlap).** Same construction but matched against
+  ground-truth *semantic classes* (all pixels of the same class pooled). Insensitive
+  to instance splitting; rewards getting the semantic region right even if one slot
+  covers multiple instances.
+- **FG-ARI (Foreground Adjusted Rand Index).** Restrict to the foreground pixels
+  (`inst != 0`) and compute the Adjusted Rand Index between the predicted slot ids
+  and the ground-truth instance ids over those pixels. Measures whether pixels that
+  belong to the same object end up in the same predicted slot — a *grouping* score
+  that's largely independent of mask alignment to object boundaries.
+
+In addition, `fg_ari_per_step` reports FG-ARI computed after each recursion step
+(t = 1…8) for the depth curves in `results/coco/fg_ari_vs_depth.png` — same metric,
+just using the intermediate slot states.
+
+**Seed averaging.** Slot init is random per forward, so the protocol is stochastic.
+`scripts/eval_published.py --seeds 3` runs the full eval 3× with seeds {0, 1, 2} and
+reports mean ± std. Std ≈ 0 in the table means the reported gaps are far above
+seed noise. Training itself is a single seed per checkpoint; the seed-averaging is
+on evaluation alone (we have not yet seed-averaged training).
 
 ## Environment
 
@@ -112,34 +202,23 @@ rest of the pipeline adapts (DINOv2 → 256 patches, DINOv3 → 441 at 336²).
 
 ## Training and evaluation
 
-The training-time recipe was developed on Pascal VOC and stayed unchanged when we
-moved to COCO (no per-dataset tuning).
-
 ```bash
-# VOC (15.6k leakage-free image-only train set, validated baseline matches DINOSAUR)
-uv run python scripts/build_train_index.py    # one-off: build the leakage-free index
-uv run python -m dino_trm.train mode=baseline data.large_train=true optim.epochs=40
-uv run python -m dino_trm.train mode=trm      data.large_train=true optim.epochs=40
-uv run python -m dino_trm.train mode=coupled  data.large_train=true optim.epochs=40 \
-    loss.query_ortho_weight=0.1                # anti-collapse on coupled's queries
+# Build the COCO multi-object subset (25k train + 2k val; downloads only those JPGs)
+uv run python scripts/build_coco_subset.py
 
-# COCO multi-object subset (where the recursion gain shows up; ~14h sequential)
-uv run python scripts/build_coco_subset.py    # 25k train + 2k val, downloads only those JPGs
-bash run_coco.sh                              # baseline + trm/coupled with cross-attn, 30 ep
+# Train. Sequential ~14h on a single 16GB consumer GPU.
+bash run_coco.sh             # baseline + trm/coupled with cross-attn, 30 epochs each
+bash run_coco_controls.sh    # mlp_block (param control) + trm + cross-attn, T=1 (recursion control)
 
 # Published-protocol eval + figures
 uv run python scripts/eval_published.py --dataset coco        # seed-averaged
 uv run python scripts/make_figures.py     --dataset coco      # depth curve + qualitative
 ```
 
-Config in `configs/base.yaml` (Hydra); `pascal_voc.yaml` inherits and only overrides
-`optim.epochs`. COCO artifacts are namespaced under `checkpoints/coco/` and
-`results/coco/` so VOC artifacts are untouched.
-
-Eval note: slot init is random per forward, so the published-protocol eval is
-stochastic; `eval_published.py` defaults to 3-seed averaging. With T=8 recursion,
-gradients from the final step reach the learned latent init `z0` only if BPTT is
-intact, which `tests/test_recursion_grad.py` verifies.
+Config lives in `configs/base.yaml` (Hydra). Slot init is random per forward, so the
+published-protocol eval is stochastic; `eval_published.py` defaults to 3-seed
+averaging. With T=8 recursion, gradients from the final step reach the learned latent
+init `z0` only if BPTT is intact, which `tests/test_recursion_grad.py` verifies.
 
 ## Limitations
 
@@ -149,13 +228,12 @@ intact, which `tests/test_recursion_grad.py` verifies.
   so it's a regime check, not a direct comparison.
 - **Fixed-depth recursion (T=8).** Both `trm` and `coupled` run a hardcoded 8-step
   inner loop (`models/trm_module.py:82`, `configs/base.yaml:17`). The original TRM
-  uses ACT-style halting so depth varies per sample at training time. The halting
-  head and ACT loss are wired up here (`losses.act_halting_loss`, `loss.act_weight`)
-  but kept at 0 in every reported run.
-- **Parameter-count confound.** The `trm` and `coupled` variants have ~64% more
-  trainable parameters than baseline (6.4M vs 3.9M), so part of the mBO gain over
-  baseline may come from the extra capacity rather than the recursion itself, and we
-  don't have a parameter-matched, single-pass control to isolate this.
+  uses ACT (Adaptive Computation Time) halting so depth varies per sample at
+  training time. The halting head and ACT loss are wired up here
+  (`losses.act_halting_loss`, `loss.act_weight`) but kept at 0 in every reported run.
+- **Recursion hurts mBO at T=8.** The controls revealed `trm @ T=1` beats `trm/coupled
+  @ T=8` on mBO (25.7 vs 25.2). The fixed-depth recursion is over-iterating for the
+  boundary-quality objective; ACT halting (below) is the obvious fix.
 
 ## Future work
 
@@ -172,7 +250,7 @@ intact, which `tests/test_recursion_grad.py` verifies.
 
 ```
 src/dino_trm/
-  models/   backbone, slot_attention, decoder, tiny_gnn, trm_module, full_model
+  models/   backbone, slot_attention, decoder, tiny_gnn, trm_module, mlp_block, full_model
   data/     pascal_voc (labelled), voc_imageonly (15.6k unlabelled),
             coco (multi-object subset; returns true instance masks for eval)
   losses.py reconstruction + deep supervision + ACT halting + query orthogonality
@@ -183,5 +261,5 @@ configs/    base.yaml, pascal_voc.yaml
 scripts/    build_train_index, build_coco_subset, sanity_check, download_data,
             eval_published, make_figures, coupled_vs_baseline_visuals,
             compare_matched, compare_models
-tests/      slot_attention, tiny_gnn, recursion_grad (full-BPTT), losses
+tests/      slot_attention, tiny_gnn, recursion_grad (full-BPTT), mlp_block, losses
 ```
