@@ -1,16 +1,21 @@
 """Wires backbone -> input projection -> slot attention -> (recursion) -> decoder.
 
-Three modes select the architecture phase:
+Four modes select the architecture phase:
 
-  * "baseline" (Phase 1): slot attention once, decode, reconstruct features.
-  * "trm"      (Phase 2): slot attention once -> TRM recursion refines slots; decode
-                          every step for deep supervision. No feedback into binding.
-  * "coupled"  (Phase 3): at every recursion step slot attention re-binds conditioned
-                          on the current latent z (top-down feedback), then TinyGNN
-                          reasons. The novel coupled loop.
+  * "baseline"  (Phase 1): slot attention once, decode, reconstruct features.
+  * "trm"       (Phase 2): slot attention once -> TRM recursion refines slots; decode
+                           every step for deep supervision. No feedback into binding.
+  * "coupled"   (Phase 3): at every recursion step slot attention re-binds conditioned
+                           on the current latent z (top-down feedback), then TinyGNN
+                           reasons. The novel coupled loop.
+  * "mlp_block" (Control): slot attention once -> non-recursive transformer stack over
+                           slots (same _Block as TinyGNN, optionally with cross-attn) ->
+                           decode. Parameter-matched to trm/coupled; isolates the
+                           contribution of the recursion itself from raw capacity.
 
 Recursive modes return per-step lists so the trainer can apply deep supervision and
-plot metric-vs-recursion-depth. Baseline returns length-1 lists for a uniform API.
+plot metric-vs-recursion-depth. Baseline / mlp_block return length-1 lists for a
+uniform API.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import torch.nn as nn
 
 from .backbone import DINOV3_S, FrozenBackbone
 from .decoder import SpatialBroadcastDecoder
+from .mlp_block import MLPBlockReasoner
 from .slot_attention import SlotAttention
 from .trm_module import TRMReasoner
 
@@ -40,12 +46,13 @@ class DinoSlotModel(nn.Module):
         n_latent_steps: int = 1,
         gnn_combine: str = "concat",
         gnn_cross_attn: bool = False,
+        mlp_block_layers: int = 3,   # depth of the non-recursive control reasoner
         image_size: int = 336,
         target_norm: bool = True,
         dtype: torch.dtype = torch.bfloat16,
     ) -> None:
         super().__init__()
-        assert mode in {"baseline", "trm", "coupled"}, mode
+        assert mode in {"baseline", "trm", "coupled", "mlp_block"}, mode
         self.mode = mode
         self.num_slots = num_slots
         self.target_norm = target_norm
@@ -72,8 +79,8 @@ class DinoSlotModel(nn.Module):
             hidden_dim=decoder_hidden,
             n_layers=decoder_layers,
         )
-        self.reasoner = (
-            TRMReasoner(
+        if mode in {"trm", "coupled"}:
+            self.reasoner = TRMReasoner(
                 slot_dim=slot_dim,
                 n_steps=n_steps,
                 gnn_layers=gnn_layers,
@@ -82,9 +89,15 @@ class DinoSlotModel(nn.Module):
                 gnn_combine=gnn_combine,
                 gnn_cross_attn=gnn_cross_attn,
             )
-            if mode in {"trm", "coupled"}
-            else None
-        )
+        elif mode == "mlp_block":
+            self.reasoner = MLPBlockReasoner(
+                slot_dim=slot_dim,
+                n_layers=mlp_block_layers,
+                n_heads=gnn_heads,
+                cross_attn=gnn_cross_attn,
+            )
+        else:
+            self.reasoner = None
 
     def forward(self, pixel_values: torch.Tensor) -> dict:
         feats = self.backbone(pixel_values).float()   # (B, N, feat_dim)
@@ -107,6 +120,22 @@ class DinoSlotModel(nn.Module):
                 "recons": [recon],
                 "masks_list": [masks],
                 "slots_list": [slots0],
+                "halts": [],
+                "queries": queries,
+                "attn": attn0,
+            }
+
+        if self.mode == "mlp_block":
+            # Param-matched non-recursive control: one pass through the feedforward
+            # block, then decode once. Patches are forwarded so the cross-attn path
+            # (when enabled) matches what trm/coupled get every recursion step.
+            slots1 = self.reasoner(slots0, patches=proj)
+            recon, masks = self.decoder(slots1)
+            return {
+                "target": target,
+                "recons": [recon],
+                "masks_list": [masks],
+                "slots_list": [slots1],
                 "halts": [],
                 "queries": queries,
                 "attn": attn0,

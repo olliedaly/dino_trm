@@ -25,7 +25,11 @@ import torch
 from dino_trm.eval_protocol import evaluate_protocol
 from dino_trm.models.full_model import DinoSlotModel
 
-MODES = ["baseline", "trm", "coupled"]
+# Canonical run set: baseline + recursive variants + the param/recursion controls.
+# Each entry is a *checkpoint name* (used to find `{name}_epoch*.pt` and the results
+# subdir); the architecture is recovered from the checkpoint's saved cfg.mode, so the
+# T=1 ablations live here as their own run-names alongside the canonical T=8 runs.
+MODES = ["baseline", "mlp_block", "trm", "coupled", "trm_t1", "coupled_t1"]
 DEVICE = "cuda"
 
 # Reference numbers (MLP decoder), from references/DINOSAUR README (percent).
@@ -84,7 +88,10 @@ def main() -> None:
     ap.add_argument("--seeds", type=int, default=3, help="number of seed-averaged eval runs")
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--max-batches", type=int, default=None)
+    ap.add_argument("--modes", type=str, default=None,
+                    help="comma-separated run-names to evaluate; default = full set")
     args = ap.parse_args()
+    modes = args.modes.split(",") if args.modes else MODES
 
     ckpt_dir = "checkpoints" if args.dataset == "voc" else os.path.join("checkpoints", args.dataset)
     results_dir = "results" if args.dataset == "voc" else os.path.join("results", args.dataset)
@@ -96,7 +103,7 @@ def main() -> None:
           f"val_images={len(loader.dataset)}")
 
     results = {}
-    for mode in MODES:
+    for mode in modes:
         ck = latest_ckpt(ckpt_dir, mode)
         if not ck:
             continue
@@ -106,8 +113,13 @@ def main() -> None:
         m = eval_seed_avg(model, loader, seeds, args.max_batches)
         results[mode] = {"ckpt": ck, **m}
         xattn = c["cfg"]["model"].get("gnn_cross_attn", False)
-        tag = f"{mode}{'+xattn' if xattn else ''}"
-        print(f"{tag:16s} mBO_i={m['mbo_i']*100:5.1f}±{m['mbo_i_std']*100:.1f}  "
+        n_steps = c["cfg"]["model"].get("n_steps", None)
+        suffix = "+xattn" if xattn else ""
+        # Append T=N marker for ablations so the table is self-documenting.
+        if c["cfg"]["mode"] in {"trm", "coupled"} and n_steps is not None and n_steps != 8:
+            suffix += f" T={n_steps}"
+        tag = f"{mode}{suffix}"
+        print(f"{tag:22s} mBO_i={m['mbo_i']*100:5.1f}±{m['mbo_i_std']*100:.1f}  "
               f"mBO_c={m['mbo_c']*100:5.1f}±{m['mbo_c_std']*100:.1f}  "
               f"FG-ARI={m['fg_ari']*100:5.1f}±{m['fg_ari_std']*100:.1f}")
 

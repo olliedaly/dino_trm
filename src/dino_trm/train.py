@@ -130,7 +130,11 @@ def main(cfg: DictConfig) -> None:
     # Local results dir (independent of wandb): metrics history + figures.
     # Namespace by dataset so COCO runs don't clobber the VOC figures/metrics
     # (and vice versa); VOC keeps the original flat path for back-compat.
-    run_tag = cfg.mode if dataset == "voc" else os.path.join(dataset, cfg.mode)
+    # ``log.run_name`` (when set) overrides the per-run tag so e.g. a T=1 ablation
+    # of mode=trm saves under "trm_t1" rather than overwriting the canonical "trm"
+    # checkpoints and figures.
+    run_name = cfg.log.run_name or cfg.mode
+    run_tag = run_name if dataset == "voc" else os.path.join(dataset, run_name)
     results_dir = os.path.join("results", run_tag)
     os.makedirs(results_dir, exist_ok=True)
     metrics_history: list[dict] = []
@@ -187,7 +191,7 @@ def main(cfg: DictConfig) -> None:
                 json.dump({"mode": cfg.mode, "history": metrics_history}, f, indent=2)
             torch.save(
                 {"model": model.state_dict(), "cfg": OmegaConf.to_container(cfg), "epoch": epoch},
-                os.path.join(cfg.log.ckpt_dir, f"{cfg.mode}_epoch{epoch}.pt"),
+                os.path.join(cfg.log.ckpt_dir, f"{run_name}_epoch{epoch}.pt"),
             )
 
     # Persist the final recursion-evolution figure for the qualitative deliverable.

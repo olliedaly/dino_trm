@@ -20,9 +20,10 @@ outputs/
 # Intermediate training-progress mask snapshots (keep only *_final.png)
 results/**/masks_step*.png
 
-# Transient COCO download progress log
+# Transient COCO download / training progress logs
 results/coco_download.log
 results/coco_train.log
+results/coco_controls_logs/
 
 # Local-only handoff/results docs (kept on disk, not tracked)
 RESULTS.md
