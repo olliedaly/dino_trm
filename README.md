@@ -242,6 +242,9 @@ init `z0` only if BPTT is intact, which `tests/test_recursion_grad.py` verifies.
 - **Full COCO** with the same recipe, once a longer training budget is available.
 - **Occlusion benchmark** isolating the touching/overlapping-object regime where the
   recursion gain shows up.
+- **Bigger Backbone.** Will more information in the patch features benefit from
+  increased ability to reason or does this more refined starting point lead to
+  accurate slots with less reasoning?  
 
 ## Layout
 
