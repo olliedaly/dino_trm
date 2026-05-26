@@ -136,7 +136,7 @@ foreground grouping score:
 
 ![Top 5 winners: coupled+xattn vs baseline on COCO val](results/coco/diagnostics/coupled_vs_baseline_winners.png)
 
-Pattern: scenes with a few similar / touching objects (3 urinals, 3 zebras, 3
+Pattern: scenes with a few similar / touching objects (3 urinals, 3 zebras, 2
 surfers) that baseline collapses into one slot but coupled's per-step re-binding
 splits, the regime the design is for. The figure is produced by
 [`scripts/coupled_vs_baseline_visuals.py`](scripts/coupled_vs_baseline_visuals.py).
