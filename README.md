@@ -244,7 +244,11 @@ init `z0` only if BPTT is intact, which `tests/test_recursion_grad.py` verifies.
   recursion gain shows up.
 - **Bigger Backbone.** Will more information in the patch features benefit from
   increased ability to reason or does this more refined starting point lead to
-  accurate slots with less reasoning?  
+  accurate slots with less reasoning?
+- **Do a full forward pass, compute loss and update weights for each number of
+  iterations t=1..8. Can we use the prior state of weights from previous step, so
+  only need to compute one more step and is this a more data efficient way to train?**
+  
 
 ## Layout
 
