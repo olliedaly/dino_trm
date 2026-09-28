@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+cd "$(dirname "$0")/../.."   # run from the repo root
 # COCO multi-object subset — control runs for the recursion claim.
 #
 # (1) mlp_block + xattn  : non-recursive transformer stack (3 _Blocks w/ slot→patch

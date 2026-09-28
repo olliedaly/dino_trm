@@ -28,3 +28,10 @@ results/coco_controls_logs/
 # Local-only handoff/results docs (kept on disk, not tracked)
 RESULTS.md
 NEXT_STEPS.md
+
+# Local-only research notes and run logs
+RESEARCH_PLAN.md
+logs/
+
+# MOVi-C runs are in progress and not reported yet
+results/movi/

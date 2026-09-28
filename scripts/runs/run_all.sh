@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+cd "$(dirname "$0")/../.."   # run from the repo root
 set -e
 COMMON="log.wandb=false"   # image_size/epochs/warmup now from config (336/80/300)
 echo "=== BASELINE ==="; uv run python -m dino_trm.train mode=baseline $COMMON eval.max_batches=10

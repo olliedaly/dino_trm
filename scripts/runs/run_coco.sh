@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
+cd "$(dirname "$0")/../.."   # run from the repo root
 set -e
-# COCO multi-object subset (25k train / 2k val) — occlusion-rich regime for Step 1
-# cross-attn variants. Checkpoints/results are namespaced (checkpoints/coco,
+# COCO multi-object subset (25k train / 2k val): baseline + trm/coupled with
+# slot->patch cross-attention. Checkpoints/results are namespaced (checkpoints/coco,
 # results/coco/<mode>) so the validated VOC artifacts are left untouched.
 COMMON="data.dataset=coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 \
 eval.max_batches=15 log.ckpt_dir=checkpoints/coco"

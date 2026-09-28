@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+cd "$(dirname "$0")/../.."   # run from the repo root
 set -e
 # gnn_combine=concat is the config default (P3); epochs cut to 40 (baseline plateaus ~ep20)
 COMMON="log.wandb=false data.large_train=true optim.epochs=40 optim.warmup_steps=200 eval.max_batches=10"
