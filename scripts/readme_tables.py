@@ -152,6 +152,23 @@ def main() -> None:
             out.append(f"{r:+.3f} (p={p:.2g})")
         print(f"  {name}: " + ", ".join(out))
 
+    hdr("5a. Is it object SIZE or object CATEGORY? (dominant class = most visible area)")
+    dc = np.load(COCO + "dominant_class.npz")
+    names = dict(zip(dc["cat_ids"].tolist(), dc["cat_names"].tolist()))
+    for cid in (1, 67):                                   # person, dining table (n >= 80)
+        m = dc["dom"] == cid
+        r, p = spearmanr(size[m], d[m])
+        b = np.searchsorted(np.quantile(size[m], [1 / 3, 2 / 3]), size[m])
+        print(f"  within {names[cid]}-dominated images (n={m.sum()}): rho {r:+.3f} (p={p:.1g}), "
+              "size terciles " + " / ".join(f"{100*d[m][b == k].mean():+.2f}" for k in range(3)))
+    dd, ls = d.copy(), np.log(size)
+    for cid in np.unique(dc["dom"]):
+        m = dc["dom"] == cid
+        dd[m] -= d[m].mean()
+        ls[m] = ls[m] - ls[m].mean()
+    r, p = spearmanr(ls, dd)
+    print(f"  after removing each dominant class's mean Δ and mean log-size: rho {r:+.3f} (p={p:.1g})")
+
     hdr("5b. Upper bound for per-image depth choice (oracle over T=1 / T=8, FG-ARI)")
     print("  select the better model on eval seed 0, score on eval seeds 1-2 (cross-validated);")
     print("  'naive' selects and scores on the same draws, which inflates it with eval noise")
@@ -188,6 +205,51 @@ def main() -> None:
                 f"{lab[k]} {np.nanmean(dd[bi == k]):+5.2f}(n={(bi == k).sum()})"
                 for k in range(5)) + f"  all {np.nanmean(dd):+.2f}  "
                 f"rho {spearmanr(sz, dd, nan_policy='omit')[0]:+.3f}")
+
+    hdr("8. Why not on VOC? Candidate explanations, each tested (T=1 -> T=8 FG-ARI, size rho)")
+    d = np.mean([img(COCO, r, "fg_ari") for r in ARMS["trm"]], 0) - \
+        np.mean([img(COCO, r, "fg_ari") for r in ARMS["trm_t1"]], 0)
+    print(f"  reference: COCO rho {spearmanr(size, d)[0]:+.3f};  VOC rho "
+          f"{spearmanr(vsize, img(VOC, 'trm_m', 'fg_ari') - img(VOC, 'trm_t1_m', 'fg_ari'), nan_policy='omit')[0]:+.3f}")
+    # (a) instance definition: COCO re-scored against VOC-style connected-component GT
+    g = np.load(COCO + "voc_style_gt.npz")
+    avg = lambda rs, gt: np.nanmean([g[f"{r}_{gt}_s{s}"] for r in rs for s in range(3)], 0)
+    dc_ = avg(ARMS["trm"], "cc") - avg(ARMS["trm_t1"], "cc")
+    print(f"  (a) COCO scored with VOC-style instances (connected components): rho "
+          f"{spearmanr(g['size_cc'], dc_, nan_policy='omit')[0]:+.3f} (binned by CC size), "
+          f"{spearmanr(g['size_true'], dc_, nan_policy='omit')[0]:+.3f} (by true size); "
+          f"instances/image {g['n_true'].mean():.1f} -> {g['n_cc'].mean():.1f}")
+    # (b) training data: COCO-trained checkpoints evaluated on VOC images
+    t = np.load(VOC + "transfer_coco_to_voc.npz")
+    tav = lambda rs: np.nanmean([t[f"{r}_s{s}"] for r in rs for s in range(3)], 0)
+    dt = tav(ARMS["trm"]) - tav(ARMS["trm_t1"])
+    rr = [spearmanr(vsize, np.nanmean([t[f"{y}_s{s}"] for s in range(3)], 0)
+                    - np.nanmean([t[f"{x}_s{s}"] for s in range(3)], 0), nan_policy="omit")[0]
+          for x, y in itertools.product(ARMS["trm_t1"], ARMS["trm"])]
+    print(f"  (b) COCO-trained models on VOC images: rho "
+          f"{spearmanr(vsize, dt, nan_policy='omit')[0]:+.3f} (per pairing "
+          f"[{min(rr):+.3f}, {max(rr):+.3f}])")
+    # (c) object count: COCO restricted to few-object images (VOC median is 2)
+    vn = vcov["n_inst"]
+    for k in (3, 4):
+        m = n_inst <= k
+        print(f"  (c) COCO images with <= {k} objects (n={m.sum()}): rho "
+              f"{spearmanr(size[m], d[m])[0]:+.3f};  VOC median objects/image "
+              f"{np.median(vn):.0f}, {100*(vn <= 3).mean():.0f}% have <= 3")
+    # (d) size distribution: COCO resampled to VOC's object-size mix
+    vs = vsize[vsize > 0]
+    edges = np.quantile(np.log(np.r_[size, vs]), np.linspace(0, 1, 21))
+    edges[0] -= 1
+    edges[-1] += 1
+    cb, vb = np.digitize(np.log(size), edges), np.digitize(np.log(vs), edges)
+    w = np.array([(vb == b).mean() / max((cb == b).mean(), 1e-9) for b in cb])
+    rng = np.random.default_rng(0)
+    rs = [spearmanr(size[i], d[i])[0] for i in
+          (rng.choice(len(size), size=len(vs), p=w / w.sum()) for _ in range(1000))]
+    print(f"  (d) COCO resampled to VOC's size mix (n={len(vs)}, 1000 draws): rho median "
+          f"{np.median(rs):+.3f}, 95% [{np.percentile(rs, 2.5):+.3f}, "
+          f"{np.percentile(rs, 97.5):+.3f}];  images with objects > 64 patches: "
+          f"VOC {100*(vs > 64).mean():.0f}%, COCO {100*(size > 64).mean():.0f}%")
 
 
 if __name__ == "__main__":

@@ -105,6 +105,10 @@ What makes me believe the FG-ARI pattern is real:
   terciles of object count, the size trend stays strong (ρ −0.23 to −0.28, p < 1e-9).
   Within terciles of object size, the count trend disappears (ρ −0.07 to +0.02, all
   p > 0.08).
+- **It is not object category.** Small and large objects tend to be different classes.
+  But within person-dominated images alone (n = 768), ρ = −0.34 (+3.4 on the smallest
+  third, −1.6 on the largest). After removing each dominant class's mean, ρ is still
+  −0.28.
 - **It is not what extra capacity does.** Adding the non-recursive 3-block stack (orange in
   the figure) raises mask IoU at every size, and helps FG-ARI most on large objects.
 - **It is not simply more segments on the foreground.** I re-ran two checkpoint pairs
@@ -148,9 +152,23 @@ absolute size bands:
 | VOC (1×1 seed) | −0.02 | +2.91 | +1.12 | +0.24 | −0.21 | +0.38 | −0.06 |
 
 On VOC the smallest band shows nothing (n = 147). Recursion again costs mBO<sub>i</sub>
-on the largest objects (−1.11). I don't know why the two datasets differ. Candidates
-include VOC's median of 2 objects per image against 7 slots, its connected-component
-instances, and training on a different image distribution.
+on the largest objects (−1.11). I tested four explanations for the difference, and
+none of them accounts for it (size ρ of the T=1 → T=8 FG-ARI change):
+
+| candidate explanation | test | ρ |
+|---|---|:--:|
+| — | COCO, as reported | −0.30 |
+| VOC's instances are connected components, which merge touching same-class objects | score COCO against connected-component instances | −0.29 |
+| the VOC models learned something different | run the COCO-trained checkpoints on VOC images | −0.09 |
+| VOC has few objects per image (median 2, against 7 slots) | COCO images with ≤ 3 objects (n = 345) | −0.24 |
+| VOC has more large-object images (41 % vs 14 % above 64 patches) | resample COCO to VOC's size mix | −0.21 [−0.26, −0.16] |
+| — | VOC, as reported | −0.06 |
+
+On VOC images, the COCO-trained checkpoints show only the weak VOC-level trend. So
+the difference lies in the VOC evaluation data, not in how the models were trained.
+Within that data it is not the instance definition, the object count or the size
+mix. The main untested candidate is annotation coverage: VOC labels only 20 classes,
+so objects of other classes count as background and FG-ARI never scores them.
 
 For reference, the VOC runs score mBO<sub>i</sub> 36.9 / 39.3 / 38.8 and
 FG-ARI 20.6 / 21.4 / 21.8 for `baseline_pm` / `trm_t1` / `trm`. DINOSAUR reports
@@ -209,6 +227,8 @@ under about 0.5 FG-ARI as noise:
 - **Explain the FG-ARI / mBO disagreement.** Decompose ARI into split pairs vs merge
   pairs per size band, and check whether the effect survives a metric that penalises
   slots covering many objects.
+- **Test annotation coverage** as the VOC explanation: re-score COCO with only VOC's
+  20 classes as foreground.
 - **Finish MOVi-C T=8.** It is synthetic, has complete ground truth, and covers a wide
   size range. It is the cleanest second-dataset test.
 - **Resolution sweep.** If the effect is about objects below the patch grid, the
@@ -292,7 +312,13 @@ bash scripts/runs/run_coco_faithful_baseline.sh   # baseline_dec2048, baseline_d
 bash scripts/runs/run_voc_coco_matched.sh         # VOC with the COCO recipe
 uv run python scripts/extract_per_image.py --runs trm_t1,trm,...   # per-image metrics
 uv run python scripts/make_readme_figures.py examples              # needs checkpoints
+uv run python scripts/coco_voc_style_gt.py    # §3 (a): COCO vs connected-component GT
+uv run python scripts/transfer_eval.py        # §3 (b): COCO-trained models on VOC
+uv run python scripts/class_confound.py       # §2: size vs category
 ```
+
+The outputs of those last three are committed, so `readme_tables.py` doesn't need
+them re-run.
 
 Comments inside the run scripts record the reasoning at the time they were written.
 Some of the hypotheses they mention were later retired (§4).
@@ -309,7 +335,8 @@ src/dino_trm/
   eval_protocol.py full-resolution mBO_i / mBO_c / FG-ARI
 configs/           base.yaml (all defaults), pascal_voc.yaml
 scripts/           data prep, eval_published (aggregate eval), extract_per_image (per-image eval),
-                   readme_tables, make_readme_figures, size_profile, MOVi download/prep
+                   readme_tables, make_readme_figures, size_profile, segment_count_check,
+                   class_confound, coco_voc_style_gt, transfer_eval, MOVi download/prep
 scripts/runs/      training recipes for every run above
 results/           per-run training curves; per_image/*.npz = the evaluation data behind the tables
 tests/             slot attention, TinyGNN, full-BPTT gradient check, mlp_block, losses
