@@ -32,17 +32,22 @@ from dino_trm.models.full_model import DinoSlotModel
 MODES = ["baseline", "mlp_block", "trm", "coupled", "trm_t1", "coupled_t1"]
 DEVICE = "cuda"
 
-# Reference numbers (MLP decoder), from references/DINOSAUR README (percent).
+# Reference numbers (percent): DINOSAUR paper (Seitzer et al., ICLR 2023), Table 3,
+# ViT-B/16 encoder + MLP decoder, 5 seeds.
 REFERENCE = {
     "voc": {
-        "DINOSAUR (reported)":     {"mbo_i": 39.3, "mbo_c": 40.8, "fg_ari": 24.6},
-        "DINOSAUR (reproduction)": {"mbo_i": 39.1, "mbo_c": 42.9, "fg_ari": 26.1},
+        "DINOSAUR (ViT-B/16, MLP dec; paper Table 3)": {"mbo_i": 39.5, "mbo_c": 40.9, "fg_ari": 24.6},
     },
+    # COCO references corrected to the DINOSAUR paper (Seitzer et al., ICLR 2023),
+    # Table 3: ViT-B/16 encoder + MLP decoder on full COCO (FG-ARI 40.5, mBO_i 27.7,
+    # mBO_c 30.9). The numbers previously cited here (26.1/30.0/39.4 and
+    # 28.0/31.7/40.2) came from the UNOFFICIAL references/DINOSAUR/README.md and are
+    # not in the paper; 26.1/30.0/39.4 is traceable to a different paper (Invariant
+    # Slot Attention, Biza et al. 2023) and was mis-attributed to DINOSAUR.
     # NOTE: full-COCO numbers — our COCO run is a curated multi-object SUBSET, so these
     # are a loose reference for the regime, not a like-for-like target.
     "coco": {
-        "DINOSAUR (reported, full COCO)":     {"mbo_i": 26.1, "mbo_c": 30.0, "fg_ari": 39.4},
-        "DINOSAUR (reproduction, full COCO)": {"mbo_i": 28.0, "mbo_c": 31.7, "fg_ari": 40.2},
+        "DINOSAUR (ViT-B/16, MLP dec, full COCO; paper Table 3)": {"mbo_i": 27.7, "mbo_c": 30.9, "fg_ari": 40.5},
     },
 }
 

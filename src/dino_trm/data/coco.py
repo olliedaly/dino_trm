@@ -1,10 +1,10 @@
-"""COCO 2017 multi-object loader (occlusion-rich training/eval).
+"""COCO 2017 multi-object loader.
 
 Reads the curated subset produced by ``scripts/build_coco_subset.py`` (only the
-downloaded JPGs + the saved id lists). COCO is the real-world, heavily occluded
-benchmark with a published DINOSAUR baseline on our exact setup — the regime where
-the coupled feedback loop and slot→patch cross-attention should actually pay off,
-unlike mostly-single-object VOC.
+downloaded JPGs + the saved id lists): images with >= 3 non-crowd instances, each at
+least 0.5% of the image. The subset is selected on instance count, not occlusion, and
+is NOT the full-COCO benchmark DINOSAUR reports on, so published numbers are only a
+loose reference.
 
   * train: unsupervised, returns ``pixel_values`` only (feature-reconstruction
     objective needs no labels), same aspect-preserving crop + h-flip as VOC.

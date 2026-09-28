@@ -25,7 +25,8 @@ class SlotAttention(nn.Module):
         slot_dim: int = 256,
         input_dim: int = 256,
         n_iters: int = 3,
-        mlp_hidden: int = 512,
+        mlp_hidden: int = 512,  # DINOSAUR E.1: residual-MLP hidden = 4*D_slots (1024 @ D=256).
+                                # 512 is the original default; kept for checkpoint compat.
         eps: float = 1e-8,
     ) -> None:
         super().__init__()

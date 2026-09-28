@@ -40,6 +40,10 @@ class DinoSlotModel(nn.Module):
         slot_iters: int = 3,
         decoder_hidden: int = 1024,
         decoder_layers: int = 4,
+        sa_mlp_hidden: int | None = None,  # DINOSAUR E.1: slot-attention residual-MLP hidden
+                                           # = 4*D_slots. None = keep original 512 (checkpoint compat).
+        pre_sa_mlp: bool = False,          # DINOSAUR E.1: two-layer pre-slot-attention MLP.
+                                           # False = original single Linear (checkpoint compat).
         n_steps: int = 8,
         gnn_layers: int = 2,
         gnn_heads: int = 4,
@@ -62,15 +66,30 @@ class DinoSlotModel(nn.Module):
         self.num_patches = self.backbone.num_patches
         self.grid_size = self.backbone.grid_size
 
-        self.input_proj = nn.Sequential(
-            nn.LayerNorm(feat_dim),
-            nn.Linear(feat_dim, slot_dim),
-        )
+        if pre_sa_mlp:
+            # DINOSAUR E.1: "After applying a layer norm, the set of N input features
+            # is transformed to slot dimensionality D_slots by a two-layer MLP with
+            # hidden size equal to the feature size D_feat, followed by another layer
+            # norm." Default (False) keeps the original single-Linear projection so
+            # trained checkpoints load unchanged.
+            self.input_proj = nn.Sequential(
+                nn.LayerNorm(feat_dim),
+                nn.Linear(feat_dim, feat_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(feat_dim, slot_dim),
+                nn.LayerNorm(slot_dim),
+            )
+        else:
+            self.input_proj = nn.Sequential(
+                nn.LayerNorm(feat_dim),
+                nn.Linear(feat_dim, slot_dim),
+            )
         self.slot_attention = SlotAttention(
             num_slots=num_slots,
             slot_dim=slot_dim,
             input_dim=slot_dim,
             n_iters=slot_iters,
+            mlp_hidden=sa_mlp_hidden if sa_mlp_hidden is not None else 512,
         )
         self.decoder = SpatialBroadcastDecoder(
             slot_dim=slot_dim,

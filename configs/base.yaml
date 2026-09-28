@@ -14,6 +14,13 @@ model:
   slot_iters: 3
   decoder_hidden: 1024
   decoder_layers: 4
+  sa_mlp_hidden: null   # DINOSAUR E.1: slot-attention residual-MLP hidden = 4*D_slots
+                        # (1024 @ D_slots=256, Table 18). null = keep original 512
+                        # (trained-checkpoint behaviour).
+  pre_sa_mlp: false     # DINOSAUR E.1: two-layer pre-slot-attention MLP
+                        # (LayerNorm -> Linear(D_feat->D_feat) -> ReLU ->
+                        #  Linear(D_feat->slot_dim) -> LayerNorm).
+                        # false = original single Linear (trained-checkpoint behaviour).
   n_steps: 8            # TRM recursion depth (used by trm/coupled)
   gnn_layers: 2
   gnn_heads: 4
@@ -26,7 +33,7 @@ model:
                          # masks (blurry, low mBO). Raw features give crisp slots.
 
 data:
-  dataset: voc            # voc | coco (COCO = multi-object occlusion-rich subset)
+  dataset: voc            # voc | coco | movi (coco = multi-object subset, >=3 instances)
   coco_root: data/coco    # where build_coco_subset.py wrote the curated subset
   batch_size: 32
   num_workers: 8

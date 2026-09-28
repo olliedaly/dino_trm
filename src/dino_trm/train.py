@@ -76,6 +76,15 @@ def main(cfg: DictConfig) -> None:
         )
         print(f"train set: COCO multi-object subset, {len(train_loader.dataset)} images; "
               f"val {len(val_loader.dataset)} images")
+    elif dataset == "movi":
+        from .data.movi import build_movi_loader
+        movi_root = cfg.data.get("movi_root", "data/movi/frames")
+        train_loader, val_loader = (build_movi_loader(
+            split=s, batch_size=cfg.data.batch_size, image_size=cfg.data.image_size,
+            num_workers=cfg.data.num_workers, root=movi_root)
+            for s in ("train", "validation"))
+        print(f"train set: MOVi-C, {len(train_loader.dataset)} frames; "
+              f"val {len(val_loader.dataset)} frames (1 per sequence)")
     else:
         if cfg.data.get("large_train", False):
             train_loader = build_imageonly_loader(

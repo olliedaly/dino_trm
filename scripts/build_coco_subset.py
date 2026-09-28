@@ -1,11 +1,10 @@
-"""Curate and download a multi-object COCO 2017 subset for occlusion-rich training.
+"""Curate and download a multi-object COCO 2017 subset.
 
-Clean VOC under-tests the coupled feedback loop (mostly single-object scenes). COCO
-is the real-world, heavily occluded benchmark with a published DINOSAUR baseline on
-*our* setup (frozen DINO -> slot attention -> MLP feature-reconstruction decoder). We
-don't need all 118k train images: we keep only **multi-object** images (the regime
-where occlusion + relational reasoning matter) and download just those JPGs, so the
-footprint stays a few GB instead of 18 GB.
+VOC is mostly single-object scenes. COCO has a published DINOSAUR baseline on the same
+kind of pipeline (frozen DINO -> slot attention -> MLP feature-reconstruction decoder).
+We don't need all 118k train images: we keep only **multi-object** images, selected
+on instance count (nothing here selects for occlusion), and download just those JPGs,
+so the footprint stays a few GB instead of 18 GB.
 
 Pipeline:
   1. download + extract the instance annotations (instances_{train,val}2017.json);
