@@ -19,17 +19,108 @@
         0.42272455822474775
       ]
     },
-    "mlp_block": {
-      "ckpt": "checkpoints/coco/mlp_block_epoch29.pt",
+    "baseline_s7_seed1": {
+      "ckpt": "checkpoints/coco/baseline_s7_seed1_epoch29.pt",
       "n_seeds": 3,
-      "mbo_i": 0.2499155881822778,
-      "mbo_i_std": 0.0007714190142435839,
-      "mbo_c": 0.3215241117789936,
-      "mbo_c_std": 0.0007613913460851403,
-      "fg_ari": 0.44647594378868916,
-      "fg_ari_std": 0.003036216040590004,
+      "mbo_i": 0.23136806956191247,
+      "mbo_i_std": 0.0009283425874661522,
+      "mbo_c": 0.28741299813422,
+      "mbo_c_std": 0.0007979544266779613,
+      "fg_ari": 0.4276440698736734,
+      "fg_ari_std": 0.002117020761188296,
       "fg_ari_per_step": [
-        0.4425076376175714
+        0.4294792249616831
+      ]
+    },
+    "baseline_s9": {
+      "ckpt": "checkpoints/coco/baseline_s9_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.2428625787655755,
+      "mbo_i_std": 0.0006982394356785939,
+      "mbo_c": 0.2857412795148,
+      "mbo_c_std": 0.0010010965217303906,
+      "fg_ari": 0.4134777701616181,
+      "fg_ari_std": 0.0009192684204867807,
+      "fg_ari_per_step": [
+        0.4126002732817524
+      ]
+    },
+    "baseline_s11": {
+      "ckpt": "checkpoints/coco/baseline_s11_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.24823688178072786,
+      "mbo_i_std": 0.0008211526630989786,
+      "mbo_c": 0.2826061768648219,
+      "mbo_c_std": 0.0009163530380365891,
+      "fg_ari": 0.3914252462518202,
+      "fg_ari_std": 0.000510102930772594,
+      "fg_ari_per_step": [
+        0.39211523560555417
+      ]
+    },
+    "baseline_s15": {
+      "ckpt": "checkpoints/coco/baseline_s15_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.2570126519195824,
+      "mbo_i_std": 0.00017172347239744035,
+      "mbo_c": 0.2772602394017399,
+      "mbo_c_std": 0.0006489414053104515,
+      "fg_ari": 0.35949616660571965,
+      "fg_ari_std": 0.0010084426807304566,
+      "fg_ari_per_step": [
+        0.358089569542866
+      ]
+    },
+    "baseline_dec2048": {
+      "ckpt": "checkpoints/coco/baseline_dec2048_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.23649070104111894,
+      "mbo_i_std": 0.00040930531777875096,
+      "mbo_c": 0.29105178406354587,
+      "mbo_c_std": 0.0005298581242090689,
+      "fg_ari": 0.4467231973459887,
+      "fg_ari_std": 0.0013721660818722366,
+      "fg_ari_per_step": [
+        0.4465824479950088
+      ]
+    },
+    "baseline_dinosaur": {
+      "ckpt": "checkpoints/coco/baseline_dinosaur_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.2397365919483793,
+      "mbo_i_std": 0.0007141303685932591,
+      "mbo_c": 0.29286405046082314,
+      "mbo_c_std": 0.0009154284388941024,
+      "fg_ari": 0.46357398846135806,
+      "fg_ari_std": 0.002142956304460707,
+      "fg_ari_per_step": [
+        0.4605953314298127
+      ]
+    },
+    "baseline_pm": {
+      "ckpt": "checkpoints/coco/baseline_pm_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.2337055514795907,
+      "mbo_i_std": 0.0007142995938243374,
+      "mbo_c": 0.28955543945819967,
+      "mbo_c_std": 0.0009834943075288588,
+      "fg_ari": 0.43806751013774775,
+      "fg_ari_std": 0.0014294848898272138,
+      "fg_ari_per_step": [
+        0.4393056825815178
+      ]
+    },
+    "baseline_pm13": {
+      "ckpt": "checkpoints/coco/baseline_pm13_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.23796182236428645,
+      "mbo_i_std": 0.0007540559778264277,
+      "mbo_c": 0.2903078472275365,
+      "mbo_c_std": 0.001845657373394431,
+      "fg_ari": 0.4603800226717428,
+      "fg_ari_std": 0.002865651314631504,
+      "fg_ari_per_step": [
+        0.4563671915454873
       ]
     },
     "trm": {
@@ -52,6 +143,26 @@
         0.4684006153808759
       ]
     },
+    "trm_s11": {
+      "ckpt": "checkpoints/coco/trm_s11_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.2701581652005653,
+      "mbo_i_std": 0.0007131125488177577,
+      "mbo_c": 0.30432924969110847,
+      "mbo_c_std": 0.0007520747333816245,
+      "fg_ari": 0.4126736805335543,
+      "fg_ari_std": 0.0012579389111731472,
+      "fg_ari_per_step": [
+        0.3690925318992427,
+        0.39587203220054334,
+        0.4062309574416464,
+        0.40925222524084937,
+        0.4101812816227287,
+        0.410702842204302,
+        0.41044089964932645,
+        0.41090016687424824
+      ]
+    },
     "coupled": {
       "ckpt": "checkpoints/coco/coupled_epoch29.pt",
       "n_seeds": 3,
@@ -72,6 +183,39 @@
         0.4723659336617431
       ]
     },
+    "coupled_dec2048": {
+      "ckpt": "checkpoints/coco/coupled_dec2048_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.2628677439474105,
+      "mbo_i_std": 0.00046091517679837217,
+      "mbo_c": 0.32242274611353255,
+      "mbo_c_std": 0.0006614040959530307,
+      "fg_ari": 0.4966800615959886,
+      "fg_ari_std": 0.00048070400984175684,
+      "fg_ari_per_step": [
+        0.44178437029724765,
+        0.4794455822859155,
+        0.4903373272171435,
+        0.4947442774953265,
+        0.4954204628057779,
+        0.496042510032406,
+        0.49629395199443094,
+        0.49690702135571735
+      ]
+    },
+    "mlp_block": {
+      "ckpt": "checkpoints/coco/mlp_block_epoch29.pt",
+      "n_seeds": 3,
+      "mbo_i": 0.2499155881822778,
+      "mbo_i_std": 0.0007714190142435839,
+      "mbo_c": 0.3215241117789936,
+      "mbo_c_std": 0.0007613913460851403,
+      "fg_ari": 0.44647594378868916,
+      "fg_ari_std": 0.003036216040590004,
+      "fg_ari_per_step": [
+        0.4425076376175714
+      ]
+    },
     "trm_t1": {
       "ckpt": "checkpoints/coco/trm_t1_epoch29.pt",
       "n_seeds": 3,
@@ -87,15 +231,10 @@
     }
   },
   "reference": {
-    "DINOSAUR (reported, full COCO)": {
-      "mbo_i": 26.1,
-      "mbo_c": 30.0,
-      "fg_ari": 39.4
-    },
-    "DINOSAUR (reproduction, full COCO)": {
-      "mbo_i": 28.0,
-      "mbo_c": 31.7,
-      "fg_ari": 40.2
+    "DINOSAUR (ViT-B/16, MLP dec, full COCO; paper Table 3)": {
+      "mbo_i": 27.7,
+      "mbo_c": 30.9,
+      "fg_ari": 40.5
     }
   }
 }
