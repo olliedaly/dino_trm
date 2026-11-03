@@ -5,6 +5,8 @@ defaults:
 
 seed: 0
 mode: baseline          # baseline (Phase 1) | trm (Phase 2) | coupled (Phase 3)
+init_from: null         # checkpoint path to start from (weights only; fresh optimiser and schedule)
+freeze: []              # submodules not trained, e.g. [slot_attention,input_proj]
 device: cuda
 
 model:
@@ -28,6 +30,10 @@ model:
   gnn_combine: concat    # how TinyGNN fuses (x,y,z): "concat" (learned routing) | "sum"
   gnn_cross_attn: false  # true = slots re-read patches via cross-attn each step (Step 1)
   mlp_block_layers: 3    # depth of the non-recursive control reasoner (mode=mlp_block)
+  sa_detach: false       # mode=sa_rec: detach slots between iterations (1-step gradients)
+  trm_detach: false      # mode=trm/coupled: detach y, z between steps (1-step gradients)
+  loc_bias: 0.0          # >0: decoder locality prior, alpha logit -= loc_bias * squared
+                         # distance (image widths) from the slot's mask centroid
   image_size: 336        # 21x21 = 441 patches (vs 14x14 @224); finer masks, ~7.8GB
   target_norm: false     # OFF: per-image feature standardisation flattened the alpha
                          # masks (blurry, low mBO). Raw features give crisp slots.
@@ -46,6 +52,8 @@ optim:
   weight_decay: 0.0
   warmup_steps: 300
   epochs: 80
+  sched_epochs: null     # cosine length in epochs (null = epochs)
+  sched_offset_epochs: 0 # >0: start the schedule this many epochs in (after a fresh warmup)
   grad_clip: 1.0         # recursion can blow up gradients; clip at 1.0
   grad_accum: 1
 

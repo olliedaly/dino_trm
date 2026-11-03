@@ -1,6 +1,6 @@
 """Wires backbone -> input projection -> slot attention -> (recursion) -> decoder.
 
-Four modes select the architecture phase:
+Five modes select the architecture phase:
 
   * "baseline"  (Phase 1): slot attention once, decode, reconstruct features.
   * "trm"       (Phase 2): slot attention once -> TRM recursion refines slots; decode
@@ -12,6 +12,14 @@ Four modes select the architecture phase:
                            slots (same _Block as TinyGNN, optionally with cross-attn) ->
                            decode. Parameter-matched to trm/coupled; isolates the
                            contribution of the recursion itself from raw capacity.
+  * "sa_rec"    (Slot-attention recursion): no module; slot attention's own iterations
+                           are the recursion. The slots after every iteration are decoded
+                           (deep supervision, full backprop through all iterations), so
+                           slot attention itself must do the grouping. Set the depth
+                           with ``slot_iters``. Same parameters as the baseline.
+                           ``sa_detach=True`` detaches the slots between iterations
+                           (1-step gradients): full backprop through 8 iterations
+                           stopped slot attention converging (sa_rec run, COCO).
 
 Recursive modes return per-step lists so the trainer can apply deep supervision and
 plot metric-vs-recursion-depth. Baseline / mlp_block return length-1 lists for a
@@ -51,15 +59,19 @@ class DinoSlotModel(nn.Module):
         gnn_combine: str = "concat",
         gnn_cross_attn: bool = False,
         mlp_block_layers: int = 3,   # depth of the non-recursive control reasoner
+        sa_detach: bool = False,     # sa_rec: detach slots between iterations (1-step grads)
+        trm_detach: bool = False,    # trm/coupled: detach y, z between steps (1-step grads)
+        loc_bias: float = 0.0,       # decoder locality prior (0 = off); see SpatialBroadcastDecoder
         image_size: int = 336,
         target_norm: bool = True,
         dtype: torch.dtype = torch.bfloat16,
     ) -> None:
         super().__init__()
-        assert mode in {"baseline", "trm", "coupled", "mlp_block"}, mode
+        assert mode in {"baseline", "trm", "coupled", "mlp_block", "sa_rec"}, mode
         self.mode = mode
         self.num_slots = num_slots
         self.target_norm = target_norm
+        self.sa_detach = sa_detach
 
         self.backbone = FrozenBackbone(model_id=model_id, dtype=dtype, image_size=image_size)
         feat_dim = self.backbone.feature_dim
@@ -97,6 +109,7 @@ class DinoSlotModel(nn.Module):
             num_patches=self.num_patches,
             hidden_dim=decoder_hidden,
             n_layers=decoder_layers,
+            loc_bias=loc_bias,
         )
         if mode in {"trm", "coupled"}:
             self.reasoner = TRMReasoner(
@@ -107,6 +120,7 @@ class DinoSlotModel(nn.Module):
                 n_latent_steps=n_latent_steps,
                 gnn_combine=gnn_combine,
                 gnn_cross_attn=gnn_cross_attn,
+                detach_steps=trm_detach,
             )
         elif mode == "mlp_block":
             self.reasoner = MLPBlockReasoner(
@@ -129,6 +143,27 @@ class DinoSlotModel(nn.Module):
             feats = (feats - mean) / (std + 1e-6)
         target = feats
         proj = self.input_proj(target)                # (B, N, slot_dim)
+
+        if self.mode == "sa_rec":
+            # Decode the slots after every slot-attention iteration (deep supervision).
+            slots_all, attn_all, q = self.slot_attention(
+                proj, return_all=True, detach_iters=self.sa_detach)
+            recons, masks_list = [], []
+            for s in slots_all:
+                recon, masks = self.decoder(s)
+                recons.append(recon)
+                masks_list.append(masks)
+            return {
+                "target": target,
+                "recons": recons,          # n_iters tensors (B, N, feat_dim)
+                "masks_list": masks_list,  # n_iters tensors (B, K, N)
+                "slots_list": slots_all,
+                "halts": [],
+                "queries": [q],
+                "attn": attn_all[-1],
+                "attn_list": attn_all,     # n_iters tensors (B, K, N)
+            }
+
         slots0, attn0, q0 = self.slot_attention(proj, return_queries=True)  # initial binding
         queries = [q0]  # slot queries collected for the orthogonality loss
 

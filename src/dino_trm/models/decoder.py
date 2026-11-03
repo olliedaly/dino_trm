@@ -21,6 +21,7 @@ class SpatialBroadcastDecoder(nn.Module):
         num_patches: int = 256,
         hidden_dim: int = 1024,
         n_layers: int = 4,
+        loc_bias: float = 0.0,
     ) -> None:
         super().__init__()
         self.num_patches = num_patches
@@ -28,6 +29,16 @@ class SpatialBroadcastDecoder(nn.Module):
 
         # Learned positional embedding, one vector per patch position.
         self.pos_emb = nn.Parameter(torch.randn(1, 1, num_patches, slot_dim) * 0.02)
+
+        # Optional locality prior (off by default): each slot's alpha logit is lowered by
+        # loc_bias x the squared distance (in image widths) from the slot's mask centroid.
+        self.loc_bias = loc_bias
+        if loc_bias:
+            g = round(num_patches ** 0.5)
+            assert g * g == num_patches, "loc_bias needs a square patch grid"
+            yy, xx = torch.meshgrid(torch.arange(g), torch.arange(g), indexing="ij")
+            pos = (torch.stack([yy, xx], -1).reshape(-1, 2).float() + 0.5) / g
+            self.register_buffer("patch_pos", pos, persistent=False)  # not saved: checkpoint compat
 
         layers: list[nn.Module] = []
         in_dim = slot_dim
@@ -47,7 +58,21 @@ class SpatialBroadcastDecoder(nn.Module):
         out = self.mlp(x)  # (B, K, N, feat_dim + 1)
 
         recon_k, alpha_logits = out.split([self.feature_dim, 1], dim=-1)
+        if self.loc_bias:
+            alpha_logits = alpha_logits - self.loc_bias * self._centroid_d2(alpha_logits)
         masks = alpha_logits.softmax(dim=1)  # softmax over slots -> (B, K, N, 1)
         recon = (recon_k * masks).sum(dim=1)  # (B, N, feat_dim)
         masks = masks.squeeze(-1)  # (B, K, N)
         return recon, masks
+
+    def _centroid_d2(self, alpha_logits: torch.Tensor) -> torch.Tensor:
+        """Squared distance from every patch to each slot's mask centroid, (B, K, N, 1).
+
+        The centroid is taken from the unbiased masks and not differentiated through, so
+        the prior moves mask mass toward each slot's centre without moving the centre.
+        """
+        with torch.no_grad():
+            m = alpha_logits.float().softmax(dim=1)  # (B, K, N, 1)
+            c = (m * self.patch_pos).sum(2) / m.sum(2).clamp_min(1e-6)  # (B, K, 2)
+            d2 = (self.patch_pos - c.unsqueeze(2)).pow(2).sum(-1, keepdim=True)  # (B, K, N, 1)
+        return d2.to(alpha_logits.dtype)

@@ -75,6 +75,8 @@ class SlotAttention(nn.Module):
         inputs: torch.Tensor,            # (B, N, input_dim)
         z_prev: torch.Tensor | None = None,  # (B, K, slot_dim) or None
         return_queries: bool = False,
+        return_all: bool = False,
+        detach_iters: bool = False,
     ):
         """Returns (slots (B, K, slot_dim), attn (B, K, N)).
 
@@ -83,6 +85,14 @@ class SlotAttention(nn.Module):
         segmentation metrics and visualisation. With ``return_queries=True`` also
         returns the final-iteration slot queries ``q`` (B, K, slot_dim) — the vectors
         regularised by the query-orthogonality loss to prevent collapse.
+
+        With ``return_all=True`` returns ``(slots_list, attn_list, q)`` instead: the
+        slots after every iteration and the attention that produced them, so each
+        iteration can be decoded and supervised (mode "sa_rec").
+
+        With ``detach_iters=True`` the slots are detached before every iteration after
+        the first, so each iteration's loss trains only that one update (1-step
+        gradients, as in TRM's deep supervision). Forward values are unchanged.
         """
         b, n, _ = inputs.shape
         inputs = self.norm_input(inputs)
@@ -93,7 +103,10 @@ class SlotAttention(nn.Module):
 
         attn = None
         q = None
-        for _ in range(self.n_iters):
+        slots_all, attn_all = [], []
+        for i in range(self.n_iters):
+            if detach_iters and i > 0:
+                slots = slots.detach()
             slots_prev = slots
             q = self.to_q(self.norm_slots(slots))
 
@@ -117,7 +130,11 @@ class SlotAttention(nn.Module):
                     slots_prev.reshape(-1, self.slot_dim).float(),
                 ).reshape(b, self.num_slots, self.slot_dim)
                 slots = slots + self.mlp(self.norm_pre_ff(slots).float())
+            slots_all.append(slots)
+            attn_all.append(attn)
 
+        if return_all:
+            return slots_all, attn_all, q
         if return_queries:
             return slots, attn, q
         return slots, attn

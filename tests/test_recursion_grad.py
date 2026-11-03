@@ -102,6 +102,20 @@ def test_full_bptt_differs_from_truncated():
     assert trunc_grad.norm().item() < full_grad.norm().item()
 
 
+def test_detach_steps_keeps_forward_and_cuts_gradient():
+    """detach_steps (TRM-style 1-step gradients): identical forward, but a final-step
+    loss no longer reaches z0, while x (re-fed every step) still gets gradient."""
+    sa, reasoner, decoder, proj, target = _setup()
+    slots0 = sa(proj)[0].detach().requires_grad_(True)
+    full = reasoner(slots0)["y"]
+    reasoner.detach_steps = True
+    cut = reasoner(slots0)["y"]
+    assert all(torch.equal(a, b) for a, b in zip(full, cut))
+    torch.nn.functional.mse_loss(decoder(cut[-1])[0], target).backward()
+    assert reasoner.z0.grad is None
+    assert slots0.grad is not None and slots0.grad.norm().item() > 0
+
+
 def test_coupled_rebind_grad_to_slot_attention():
     """In coupled mode, gradient reaches slot-attention params via the rebind path."""
     sa, reasoner, decoder, proj, target = _setup()

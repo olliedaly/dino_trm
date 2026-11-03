@@ -53,6 +53,15 @@ def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
 
     model = DinoSlotModel(mode=cfg.mode, **cfg.model).to(device)
+    if cfg.get("init_from"):
+        # Start from a trained run's weights, e.g. continue trm_t1 with model.n_steps=8.
+        model.load_state_dict(torch.load(cfg.init_from, map_location=device, weights_only=False)["model"])
+        print(f"initialised from {cfg.init_from}")
+    for name in cfg.get("freeze") or []:
+        # e.g. freeze=[slot_attention,input_proj]: keep those submodules as initialised
+        for p in getattr(model, name).parameters():
+            p.requires_grad_(False)
+        print(f"frozen: {name}")
     grid_size = model.backbone.grid_size
     print(f"mode={cfg.mode} grid={grid_size} num_patches={model.num_patches}")
 
@@ -119,9 +128,13 @@ def main(cfg: DictConfig) -> None:
     opt = torch.optim.AdamW(params, lr=cfg.optim.lr, weight_decay=cfg.optim.weight_decay)
 
     steps_per_epoch = len(train_loader) // cfg.optim.grad_accum
-    total_steps = steps_per_epoch * cfg.optim.epochs
+    total_steps = steps_per_epoch * (cfg.optim.get("sched_epochs") or cfg.optim.epochs)
+    # With init_from: continue a longer schedule part-way (after a fresh warmup), e.g. from
+    # epoch 3 of 30 with optim.sched_epochs=30 optim.sched_offset_epochs=3.
+    offset = steps_per_epoch * cfg.optim.get("sched_offset_epochs", 0)
+    warmup = cfg.optim.warmup_steps
     sched = torch.optim.lr_scheduler.LambdaLR(
-        opt, lambda s: lr_lambda(s, cfg.optim.warmup_steps, total_steps)
+        opt, lambda s: lr_lambda(s + offset, warmup, total_steps) * (min(1.0, s / max(1, warmup)) if offset else 1.0)
     )
 
     logger = Logger(

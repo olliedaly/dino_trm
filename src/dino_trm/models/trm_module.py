@@ -1,7 +1,9 @@
 """TRM recursive reasoning over the slot graph.
 
 Runs the TinyGNN block for ``n_steps`` outer steps with **full backprop through the
-entire recursion** (no 1-step gradient approximation — TRM showed that matters). At
+entire recursion** (no 1-step gradient approximation — TRM showed that matters;
+``detach_steps=True`` instead cuts the gradient between steps, as TRM does between its
+deep-supervision steps). At
 each step it emits the refined answer ``y_t`` (for deep supervision) and an ACT-style
 halting logit ``Q(z_t)`` computed in fp32 (bf16 over a deep recursion can NaN the
 halting sigmoid).
@@ -34,10 +36,14 @@ class TRMReasoner(nn.Module):
         n_latent_steps: int = 1,
         gnn_combine: str = "concat",
         gnn_cross_attn: bool = False,
+        detach_steps: bool = False,
     ) -> None:
         super().__init__()
         self.n_steps = n_steps
         self.slot_dim = slot_dim
+        # True = detach y and z between steps, so each step's loss trains only that
+        # step (TRM detaches between its deep-supervision steps). x keeps its gradient.
+        self.detach_steps = detach_steps
         self.tiny_gnn = TinyGNN(
             slot_dim=slot_dim,
             n_layers=gnn_layers,
@@ -80,6 +86,8 @@ class TRMReasoner(nn.Module):
         halts: list[torch.Tensor] = []
 
         for _ in range(self.n_steps):
+            if self.detach_steps and ys:
+                y, z = y.detach(), z.detach()
             x_t = rebind(z) if rebind is not None else x  # Phase 3 re-binding
             if rebind is not None:
                 # Fresh binding also reseeds the answer stream for this step.
