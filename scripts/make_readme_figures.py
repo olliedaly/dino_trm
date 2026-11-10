@@ -1,4 +1,4 @@
-"""Figures for the README, generated from the stored per-image evaluation vectors.
+"""Figures for docs/earlier_analysis.md (the README until November 2026), generated from the stored per-image evaluation vectors.
 
     uv run python scripts/make_readme_figures.py size       # needs results/*/per_image only
     uv run python scripts/make_readme_figures.py examples   # also needs checkpoints + DINOv3

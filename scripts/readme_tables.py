@@ -1,4 +1,4 @@
-"""Print every number quoted in README.md, straight from the stored per-image vectors.
+"""Print every number quoted in docs/earlier_analysis.md (the README until November 2026), straight from the stored per-image vectors.
 
     uv run python scripts/readme_tables.py
 
@@ -250,6 +250,85 @@ def main() -> None:
           f"{np.median(rs):+.3f}, 95% [{np.percentile(rs, 2.5):+.3f}, "
           f"{np.percentile(rs, 97.5):+.3f}];  images with objects > 64 patches: "
           f"VOC {100*(vs > 64).mean():.0f}%, COCO {100*(size > 64).mean():.0f}%")
+
+    slot_shape(qi)
+
+
+def slot_shape(qi: np.ndarray) -> None:
+    """Section 9, from results/coco/per_image/slot_shape (scripts/slot_shape.py, eval seed 0)."""
+    P = COCO + "slot_shape/"
+    if not os.path.isdir(P):
+        print("\n(9. skipped: run scripts/slot_shape.py)")
+        return
+    ld = lambda r: np.load(f"{P}{r}.npz")  # noqa: E731
+    nsteps = lambda d: 1 + max(int(k.rsplit("_t", 1)[1]) for k in d.files  # noqa: E731
+                               if k.startswith("pieces_t"))
+    fifths = lambda v: np.array([np.nanmean(v[qi == k]) for k in range(5)])  # noqa: E731
+
+    hdr("9a. Slot shape, no ground truth used (final step; ranges over training seeds)")
+    print(f"{'run':22s} {'largest slot':>13s} {'pieces/slot':>12s} {'off main piece':>15s}")
+    rows = [("baseline_pm", ARMS["baseline_pm"]), ("mlp_block", ARMS["mlp_block"]),
+            ("trm_t1", ARMS["trm_t1"]), ("trm_t2", ["trm_t2"]), ("trm_t4", ["trm_t4"]),
+            ("trm (T=8)", ARMS["trm"])]
+    for name, runs in rows:
+        cells = []
+        for k, s in (("max_share", 1), ("pieces", 0), ("off_main", 1)):
+            v = [ld(r)[f"{k}_t{nsteps(ld(r)) - 1}"].mean() * (100 if s else 1) for r in runs]
+            f = "%.1f%%" if s else "%.2f"
+            cells.append(f % v[0] if len(v) == 1 else f"{f % min(v)}-{f % max(v)}")
+        print(f"{name:22s} {cells[0]:>13s} {cells[1]:>12s} {cells[2]:>15s}")
+    for k in ("max_share", "pieces"):
+        per = np.mean([[ld(r)[f"{k}_t{t}"].mean() for t in range(8)] for r in ARMS["trm"]], 0)
+        print(f"  trm, {k} per recursion step (3-seed mean): " + " ".join(f"{x:.3f}" for x in per))
+
+    hdr("9b. Interventions on the T=1 model (no ground truth, no retraining), FG-ARI by "
+        "size quintile, eval seed 0")
+    real = np.array([fifths(100 * (ld(y)["fg_ari_orig"] - ld(x)["fg_ari_orig"]))
+                     for x, y in itertools.product(ARMS["trm_t1"], ARMS["trm"])])
+    real_all = [100 * np.nanmean(ld(y)["fg_ari_orig"] - ld(x)["fg_ari_orig"])
+                for x, y in itertools.product(ARMS["trm_t1"], ARMS["trm"])]
+    target = np.mean([ld(r)["max_share_t7"].mean() for r in ARMS["trm"]])
+    cut, even, lams = [], [], []
+    for r in ARMS["trm_t1"]:
+        d = ld(r)
+        cut.append(d["fg_ari_split"] - d["fg_ari_orig"])
+        # bias strength that brings the mean largest-slot share to T=8's (linear interp.)
+        grid = [0.0] + sorted(float(k[len("max_share_lam"):]) for k in d.files
+                              if k.startswith("max_share_lam"))
+        ms = [d["max_share_t0"].mean()] + [d[f"max_share_lam{x:.1f}"].mean() for x in grid[1:]]
+        fg = [d["fg_ari_orig"]] + [d[f"fg_ari_lam{x:.1f}"] for x in grid[1:]]
+        i = int(np.searchsorted(-np.array(ms), -target))
+        w = (ms[i - 1] - target) / (ms[i - 1] - ms[i])
+        lams.append(grid[i - 1] + w * (grid[i] - grid[i - 1]))
+        even.append((1 - w) * fg[i - 1] + w * fg[i] - d["fg_ari_orig"])
+    print(f"  largest-slot share: T=8 mean {100*target:.1f}%; matched bias strength per T=1 "
+          "seed " + ", ".join(f"{x:.2f}" for x in lams))
+    for name, rws, alls in [
+            ("real T=1 -> T=8 (9 pairings)", real, real_all),
+            ("T=1, slots cut into pieces", np.array([fifths(100 * v) for v in cut]),
+             [100 * np.nanmean(v) for v in cut]),
+            ("T=1, slot sizes evened to T=8", np.array([fifths(100 * v) for v in even]),
+             [100 * np.nanmean(v) for v in even])]:
+        print(f"  {name:32s} " + "  ".join(f"Q{k+1} {rws[:, k].mean():+5.2f}" for k in range(5))
+              + f"   all {np.mean(alls):+.2f}")
+        print(f"  {'':32s} " + "  ".join(f"[{rws[:, k].min():+.1f},{rws[:, k].max():+.1f}]"
+                                         for k in range(5))
+              + f"   [{min(alls):+.2f},{max(alls):+.2f}]")
+
+    hdr("9c. Why mBO_i barely moves: best IoU per object, by object size (final step)")
+    bands = [0, 4, 16, 64, np.inf]
+    A = [ld(r) for r in ARMS["trm_t1"]]
+    B = [ld(r) for r in ARMS["trm"]]
+    area = A[0]["inst_area"]
+    assert all((d["inst_area"] == area).all() for d in A + B)
+    bi = np.digitize(area, bands) - 1
+    iou1 = np.mean([d["inst_iou"] for d in A], 0)
+    iou8 = np.mean([d["inst_iou"] for d in B], 0)
+    for k in range(len(bands) - 1):
+        m = bi == k
+        print(f"  objects {bands[k]:>3}-{bands[k+1]:<4} patches: {100*m.mean():4.1f}% of objects, "
+              f"best IoU T=1 {100*iou1[m].mean():5.1f}  T=8 {100*iou8[m].mean():5.1f}  "
+              f"Δ {100*(iou8[m] - iou1[m]).mean():+5.2f}")
 
 
 if __name__ == "__main__":

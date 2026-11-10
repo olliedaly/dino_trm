@@ -28,6 +28,7 @@ results/coco_controls_logs/
 # Local-only handoff/results docs (kept on disk, not tracked)
 RESULTS.md
 NEXT_STEPS.md
+docs/sa_loop_plan.md
 
 # Local-only research notes and run logs
 RESEARCH_PLAN.md

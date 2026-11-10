@@ -1,10 +1,46 @@
 # What recursion does to the slots (T=1 → T=8)
 
-Draft of 2026-11-03. Status of the controls (section 10):
-- complete: `trm_1step` (3 seeds), the locality priors b = 10 and b = 40 (`trm_t1_lp10`, `trm_t1_lp40`, 3 seeds each), and the warm starts from the final epoch (3 seeds each);
-- complete: warm starts from epochs 2 and 7 and a frozen-slot-attention rescue (the T=8 runs in 3 seeds; the T=1 runs and both learning-rate schedules in seed 0; section 10);
-- complete: what starts the handover, from the saved checkpoints of every model (section 4);
-- complete: `trm_final`, the loss on the final step only (3 seeds; section 10).
+Draft of 2026-11-05. Every run in section 10 is complete. A short version is in [recursion_summary.md](recursion_summary.md).
+
+## In brief
+
+**Setup.** Slot attention splits each image's frozen DINO features into 7 slots. The module then refines the slots, re-reading the image through cross-attention each time: once (T=1), or 8 times with the same small block (T=8). A decoder rebuilds the image's features from the slots, and each slot's mask is the part of the image it rebuilds. The only training signal is the reconstruction error. Numbers are 3-seed means on the 2,000 COCO validation images unless stated.
+
+**Finding: trained from scratch, T=8's slots group by position, where T=1's group by appearance.**
+- T=1 puts far-apart regions that look alike, such as two objects of one class or two patches of sky, into one slot, and keeps different-looking neighbours apart. T=8 does neither, much like the baseline with no module.
+- Without labels: patches more than 14 apart with similar DINO features (cosine > 0.7) share a slot 0.45 of the time in T=1, 0.32 in T=8 and 0.33 in the baseline. Neighbours that look different (within 3 patches, cosine 0.2–0.3) share one 0.07, 0.15 and 0.24 of the time. Every seed shows this.
+- In effect, training this module through 8 steps from scratch acts as a locality prior. T=1 trained with an explicit distance penalty, and no recursion, reproduces T=8's slots, 86% of its extra error and most of its FG-ARI gain.
+- Neither the module nor iterating it is local by itself. The same module trained with 1 step groups most by appearance, and T=1's module run for 8 steps at test time merges slots indiscriminately rather than becoming local.
+
+**Why: a race in the first four epochs.**
+1. Slot attention groups by appearance within two epochs, in every model. The module's output starts without that grouping.
+2. The output can inherit slot attention's grouping only while it still follows slot attention's slots. T=1's output inherits it over epochs 2–7.
+3. With 8 steps, the later steps learn to rebuild the slots from the image themselves, and the output stops following slot attention's slots. Swap those slots for another image's: at epoch 4, T=8's output moves only 0.18 of the way to that image's output (T=1: 0.76). By then it has inherited none of the grouping.
+4. Slot attention, no longer used, collapses. The slots that T=8's small block builds on its own are position-based, and stay so.
+
+**Tests of that account.**
+- **Grouping learned first survives recursion.** T=1's trained weights, trained on with 8 steps, keep it.
+- **The window closes by epoch 7.** T=8's weights from epoch 2, trained on with 1 step, take up part of the grouping; its weights from epoch 7 cannot.
+- **The cause is T=8's small block, not depth or weight sharing.** Given 3.7× the parameters, T=8 ends grouping by appearance either way (table).
+  - With a separate block per step it hands over even sooner, and the blocks then learn the grouping themselves.
+  - With one wide shared block, the first step does nearly all the work. The output keeps following slot attention's slots until it has inherited the grouping, and hands over only late.
+- **Not backpropagation through the 8 steps, and not the losses on the intermediate steps.** Training with 1-step gradients, or with the loss on the final step only, loses the grouping too.
+
+| | baseline (no module) | T=1 | T=8 | T=8, a block per step | T=8, one wide block |
+|---|---|---|---|---|---|
+| parameters | 6.40M | 6.40M | 6.40M | 23.5M | 23.5M |
+| output follows slot attention's slots at epoch 4 (first 512 images) | | 0.76 | 0.18 | 0.03 | 0.75 |
+| far look-alike patches in one slot (no labels) | 0.33 | 0.45 | 0.32 | 0.43 | 0.42 |
+| same-class ÷ different-class sharing, 3–7 patches apart | 1.30 | 1.86 | 1.50 | 1.76 | 1.77 |
+| reconstruction error vs T=1 | +13% | | +13% | 0% | +5% |
+| FG-ARI | 43.9 | 45.8 | 47.0 | 48.1 | 47.5 |
+| ARI counting background | 21.6 | 24.1 | 22.0 | 24.0 | 23.8 |
+
+**Cost and gain.** T=8 gives back all of T=1's reconstruction gain over the baseline, and loses 2.1 points of ARI counting background and 1.9 of mBO_c. It gains 1.2 points of FG-ARI because FG-ARI penalises putting two objects of one class in one slot, which is what appearance grouping does, and ignores background. The gain comes entirely from images with several objects of one class; in images with none, T=8 loses 2.8 points. The two larger models, and T=1's weights trained on with 8 steps, gain FG-ARI and keep most of what T=8 loses: their error is at most 5% above T=1's, and their ARI counting background within 0.4 of it.
+
+**Not tested.** Whether a large shared block could learn the grouping itself after an early handover (the wide one never hands over early), and 8 separate blocks with only T=8's total parameters.
+
+The evidence for each point is in the detailed summary below and in sections 1–12.
 
 ## Setup
 
@@ -24,16 +60,17 @@ Draft of 2026-11-03. Status of the controls (section 10):
 - **Token-pair measures.** On the 21×21 patch grid, each token takes its pixels' majority label. The measure is the share of token pairs in one slot, by type of pair and by distance (1 token = 16 px).
 - **"Appearance"** means similarity of the frozen DINO features, which is largely semantic. Two regions look alike when their backbone features are close.
 
-## Summary
+## Summary in detail
 
 **Without recursion, the module learns to group by appearance.** Far-apart regions that look alike, such as two objects of one class or two patches of the same background, end up in one slot. Neighbours that look different are kept apart.
 
-**Trained with recursion from scratch, the module never learns that grouping.** T=8's slots group by position, much like those of the no-module baseline. In effect, recursion training acts as a locality prior: a T=1 trained with an explicit one, and no recursion, reproduces T=8's grouping and most of its costs and FG-ARI gain (point 6).
+**Trained with recursion from scratch, the module never learns that grouping.** T=8's slots group by position, much like those of the no-module baseline. In effect, recursion training acts as a locality prior: a T=1 trained with an explicit one, and no recursion, reproduces T=8's grouping and most of its costs and FG-ARI gain (point 6). This is recursion through T=8's small block, shared by all 8 steps. Given 3.7× the parameters, as a separate block per step or as one wider shared block, the 8-step model does end up grouping by appearance (point 9).
 
 **Why: a race early in training (points 2 and 7).**
 - Slot attention groups by appearance from the first epoch. The module can take that grouping up only while its output follows slot attention's slots. T=1 takes it up over epochs 2–7.
 - Recursion's later steps re-read the image and learn to rebuild the slots without slot attention's. The output stops following slot attention's slots, and slot attention, no longer needed, collapses.
 - At 8 steps this happens by epochs 2–4, before the module has taken up any grouping. The slots that the steps build on their own are position-based.
+- That last part needs T=8's small block, not weight sharing. With a separate block per step (3.7× the parameters), the handover comes even sooner, yet the steps then learn appearance grouping on their own. One shared block with as many parameters lets its first step do the work, so the handover comes late. By then the output has taken up slot attention's grouping, and it keeps it (point 9).
 
 **Recursion does not remove appearance grouping from a model that already has it.** T=1's weights, trained on with 8 steps, keep it, and they gain FG-ARI without the costs (point 8; 3 seeds).
 
@@ -86,12 +123,25 @@ Draft of 2026-11-03. Status of the controls (section 10):
    - **The decoder draws only what the slot vectors encode.** A decoder trained from scratch on frozen slots reproduces each model's grouping, locality included.
    - **The appearance grouping is made by attention over the image.** The module's cross-attention writes it into T=1's slots. Without that cross-attention, T=1 and T=8 are the same.
    - **Recursion training changes what the module writes, not what it reads.** T=8 still looks at the image by appearance, but it rebuilds the slots into position-based ones (cosine with slot attention's slots 0.45, against T=1's 0.93).
-   - **Why the module ends up writing position-based slots: it never got slot attention's grouping (point 2).** Once its output no longer follows slot attention's slots, the module rebuilds the slots itself, and the slots it builds are position-based. The 8-step objective does not force this (point 8).
+   - **Why the module ends up writing position-based slots: it never got slot attention's grouping (point 2).** Once its output no longer follows slot attention's slots, the module rebuilds the slots itself, and the slots T=8's small shared block builds are position-based. Separate blocks per step, with 3.7× the parameters, build appearance-based ones after the same handover (point 9). The 8-step objective does not force this (point 8).
 8. **What the model learns first decides it (warm starts, 3 seeds, section 10).** These runs continue a trained model's weights for 6 epochs with a different number of steps.
    - **T=1's weights trained with 8 steps keep their appearance grouping.** Class selectivity at 3–7 tokens is 1.78, against T=1's 1.86 and T=8's 1.50 (1.76–1.80 by seed). Far similar tokens are joined as often as in T=1.
    - **T=8's weights trained with 1 step stay positional:** class selectivity 1.48.
    - **Both solutions are stable under both objectives.** Recursion trained from scratch never finds appearance grouping. The split comes at epochs 2–4 (point 2).
-   - **The 8-step warm start is the only model here that gains FG-ARI over T=1 without losing ARI counting background or mBO.** FG-ARI +1.60 [+1.21, +1.97] over T=1 and +0.41 [+0.04, +0.75] over T=8; ARI counting background 24.2, mBO_i 26.3, mBO_c 33.1, all at or above both. Its error is 4.5% above T=1's (T=8: 13%).
+   - **The 8-step warm start and the untied model (point 9) are the only models here that gain FG-ARI over T=1 without losing ARI counting background or mBO.** The warm start: FG-ARI +1.60 [+1.21, +1.97] over T=1 and +0.41 [+0.04, +0.75] over T=8; ARI counting background 24.2, mBO_i 26.3, mBO_c 33.1, all at or above both. Its error is 4.5% above T=1's (T=8: 13%).
+9. **T=8's small block, not depth or weight sharing, is what ends positional (`trm_untied` and `trm_wide`, 3 seeds each, section 10).** Both controls are T=8 with 3.7× the parameters (23.5M against 6.40M).
+   - **A separate block per step (`trm_untied`) hands over sooner than T=8, then learns appearance grouping by itself.** Each block starts as a copy of the shared one, so the model starts as the same function as T=8.
+     - Its output's dependence on slot attention's slots is 0.70 / 0.36 / 0.03 at epochs 0 / 2 / 4 (T=8: 0.79 / 0.61 / 0.18). Slot attention collapses as in T=8: its map ends at FG-ARI 20, with a largest slot of 0.50.
+     - Class selectivity at 3–7 tokens keeps rising after the handover, from 1.56 at epoch 4 to 1.86 at the end (512 images). On all images it is 1.76 / 2.01 / 2.25 at 3–7 / 7–14 / > 14 tokens. That is 64–82% of the way from T=8 (1.50 / 1.55 / 1.29) to T=1 (1.86 / 2.27 / 2.46). Without labels, far similar tokens are joined at 0.427 (T=1 0.452, T=8 0.315).
+     - It keeps T=8's FG-ARI gain and more, without T=8's costs. FG-ARI is 48.1 (+2.31 [+1.94, +2.70] over T=1, +1.12 [+0.75, +1.49] over T=8). ARI counting background is 24.0 (T=1 24.1), mBO_i 26.5 and mBO_c 33.3, and its error equals T=1's.
+   - **One shared block with as many parameters (`trm_wide`: T=8 with its block's MLP widened) takes up slot attention's grouping first, then hands over late and keeps it.**
+     - Its first step does nearly all the work, as T=1's does. Through epoch 7 the later steps lower the error by only 0.3–1.3 ×10³ (T=8: 6–12 from epoch 4).
+     - So the output keeps following slot attention's slots: dependence 0.75 at epoch 4 and 0.57 at epoch 7 (T=1 0.76 / 0.63). Slot attention keeps segmenting, and the output takes up its grouping on T=1's schedule (class selectivity 1.75 at epoch 7; T=1 1.76, T=8 1.33).
+     - The handover comes late and only in part: dependence 0.31 at epoch 11 and 0.12 at the end.
+     - On all images class selectivity is 1.77 / 2.06 / 2.13, 70–75% of the way from T=8 to T=1. Without labels, far similar tokens are joined at 0.416.
+     - FG-ARI is 47.5 (+1.76 [+1.37, +2.13] over T=1, +0.57 [+0.23, +0.90] over T=8). ARI counting background is slightly below T=1's (−0.33 [−0.50, −0.17]), and its error is 4.6% above T=1's (T=8: 13%).
+   - **Both end close to the 8-step warm start from T=1 (point 8), from scratch.** The wide model matches it almost exactly; the untied model reconstructs better.
+   - **So with 3.7× the parameters, the model ends grouping by appearance whether or not its steps share a block.** The race decides whether the module inherits slot attention's grouping. T=8's small shared block hands over before taking any of it up, then rebuilds the slots by position. The two larger models avoid that by different routes. Whether a large shared block could build the grouping itself after an early handover is not tested: the wide one never hands over early.
 
 ![FG-ARI and ARI counting background, by image group, COCO and VOC](recursion_groups.png)
 
@@ -137,10 +187,10 @@ How much class matters to slot sharing (same-class sharing ÷ different-class sh
 
 | | ≤ 3 | 3–7 | 7–14 | > 14 tokens |
 |---|---|---|---|---|
-| baseline (no module) | 1.15 | 1.30 | 1.38 | 1.42 |
-| `mlp_block` | 1.37 | 1.77 | 2.11 | 2.07 |
-| T=1 | 1.40 | 1.86 | 2.29 | 2.50 |
-| T=8 | 1.25 | 1.50 | 1.53 | 1.40 |
+| baseline (no module) | 1.15 | 1.30 | 1.38 | 1.37 |
+| `mlp_block` | 1.37 | 1.77 | 2.10 | 2.05 |
+| T=1 | 1.40 | 1.86 | 2.27 | 2.46 |
+| T=8 | 1.25 | 1.50 | 1.55 | 1.29 |
 
 The same at pixel level:
 
@@ -201,7 +251,7 @@ The seed ranges of T=1 and T=8 don't overlap on any probe. Split by whether the 
 
 ## 3. Where the locality comes from
 
-It comes from training with recursion, not from the module itself or from iterating it.
+It comes from training with recursion through T=8's small shared block, not from the module itself, from iterating it, from depth alone or from weight sharing alone (`trm_untied` and `trm_wide`, below).
 - **Dose-response** (seed 0), T=1 / T=2 / T=4 / T=8:
   - far same-class sharing 0.172 / 0.176 / 0.142 / 0.086;
   - reconstruction error 0.0303 / 0.0312 / 0.0323 / 0.0341.
@@ -295,6 +345,8 @@ Already at T=2 slot attention starts to collapse and the module rebuilds the slo
 - **Slots needing position as their only identity:**
   - Slot attention's slots are nearly identical in every model with a module (mean pairwise cosine 0.88–0.91, against 0.53 in the baseline), T=1 included.
   - The module creates the differences between slots in T=1 as much as in T=8.
+- **Depth, or re-reading the image at every step:** the untied model has both and hands over sooner than T=8, yet ends grouping by appearance (section 10).
+- **Weight sharing by itself:** one shared block with the untied model's parameter count also ends grouping by appearance (section 10).
 
 **Not forced by the objective: two stable solutions (warm starts, section 10).**
 - **An 8-step module keeps an appearance layout when it starts from one.** T=1's weights, trained 6 more epochs with 8 steps, keep T=1's grouping and improve on it. So the idea that an appearance layout cannot survive repeated application is ruled out.
@@ -308,6 +360,12 @@ Already at T=2 slot attention starts to collapse and the module rebuilds the slo
   - Grouping taken up before the handover is kept. T=8 hands over at epochs 2–4, before it has taken up any.
   - The warm starts confirm the timing (free at epoch 2, committed by epoch 7; 3 seeds). The handover comes much sooner from T=8's early state than from T=1's, under either learning-rate schedule. Freezing slot attention prevents it, but rescues little of the grouping.
   - The losses on the intermediate steps are not needed: with the loss on the final step only (`trm_final`, seeds 0 / 1 / 2), the handover comes at epoch 3 / 2 / 2, no later than in T=8 (section 10).
+  - **The race decides whether the module inherits slot attention's grouping, not what it builds without it.**
+    - With a separate block per step (`trm_untied`, 3 seeds), the handover comes sooner still: dependence 0.03 at epoch 4, against T=8's 0.18. Slot attention collapses as in T=8.
+    - Yet the steps then build appearance grouping themselves. Class selectivity at 3–7 tokens rises from 1.56 at epoch 4 to 1.86, while the output no longer depends on slot attention's slots.
+    - Across its 8 steps, far same-class sharing grows from 0.076 to 0.158; in T=8 it falls from 0.110 to 0.096.
+    - The untied model has 3.7× T=8's parameters. One shared block with as many (`trm_wide`, 3 seeds) does not hand over early at all. Its first step does nearly all the work, so the output follows slot attention's slots and takes up their grouping. The handover comes late and in part (dependence 0.57 at epoch 7, 0.12 at the end), and the grouping is kept.
+    - So the position-based rebuild needs T=8's small block, not weight sharing (section 10).
 
 ## 4. When it happens in training
 
@@ -360,8 +418,9 @@ Learning curves, 3 seeds (512 validation and 512 training images; error ×10³):
 | T=8 (3 seeds) | 1.21 | 1.33 | 1.35 | 1.29 | 1.33 | 1.33 | 1.43 | 1.59 |
 | 1-step control (3 seeds) | 1.01 | 1.27 | 1.35 | 1.28 | 1.35 | 1.33 | 1.37 | 1.56 |
 | T=8, loss on the final step only (3 seeds) | 1.21 | 1.30 | 1.19 | 1.14 | 1.18 | 1.26 | 1.28 | 1.39 |
+| T=8, one wide shared block (3 seeds) | 1.15 | 1.31 | 1.31 | 1.31 | 1.45 | 1.75 | 1.61 | 1.89 |
 
-- **T=8 does not lose class selectivity; it never gains it.** All models are level through epoch 2. T=1, T=2 and T=4 gain it over epochs 2–7. T=8 and the 1-step control stay flat until epoch 11.
+- **T=8 does not lose class selectivity; it never gains it.** All models are level through epoch 2. T=1, T=2, T=4 and the wide shared block gain it over epochs 2–7. T=8 and the 1-step control stay flat until epoch 11.
 - **Every multi-step model goes through a handover.** Slot attention stops segmenting, the step-1 output gets worse, and the later steps take over the reconstruction. The deeper the recursion, the earlier it comes:
 
 | | handover (slot attention map FG-ARI) | step-1 minus final error ×10³, before → after | selectivity at the handover |
@@ -372,9 +431,10 @@ Learning curves, 3 seeds (512 validation and 512 training images; error ×10³):
 | 1-step control, seeds 0 / 1 / 2 | epochs 4–11, gradual (37 / 35 / 31 → 22 / 30 / 26) | +1.4 / +1.5 / +1.5 → +2.8 / +2.5 / +2.2 | 1.32 / 1.39 / 1.35: not yet |
 | T=8, loss on the final step only, seeds 0 / 1 / 2 | epochs 2–3 / 1–2 / 1–2, abrupt (42 / 40 / 43 → 22 / 19 / 21) | — (intermediate steps not trained to reconstruct) | 1.27 / 1.34 / 1.29: not yet |
 | T=1 weights → 8 steps | first epoch (largest slot 0.46) | +5.9 | 1.69: already learned |
+| T=8, one wide shared block, seeds 0 / 1 / 2 | from epoch 7, partial (42 / 39 / 45 → 38 / 25 / 30 at epochs 29 / 29 / 11) | +0.6 / +1.5 / +1.6 → +2.7 / +4.5 / +6.3 | 1.66 / 1.79 / 1.80: already learned |
 
 - **In T=8 seed 0 the handover is abrupt.** Step 1's error jumps from 45.4 to 58.7 between epochs 2 and 4, worse than at epoch 0, and the final step's from 44.6 to 49.6.
-- **Grouping learned before the handover is kept; grouping not yet learned is not learned afterwards.** T=2, T=4 and the 8-step warm start keep their selectivity through the handover. T=8 and the 1-step control reach it before learning any, and stay positional.
+- **Grouping learned before the handover is kept; grouping not yet learned is not learned afterwards.** T=2, T=4, the 8-step warm start and the wide shared block keep their selectivity through the handover. T=8 and the 1-step control reach it before learning any, and stay positional.
 - **The 1-step control learns more slowly.** Its slot attention still segments at epochs 2–4 (map FG-ARI 31–38), but its error is far behind (49.5 / 48.7 / 49.2 at epoch 4 in seeds 0 / 1 / 2, against T=1's 40.7 / 40.5 / 40.6). In all three seeds it reaches the error at which T=1 starts gaining selectivity (about 42, epoch 3) only at epochs 7–11, just as its slot attention collapses.
 - **Within T=8 the order holds too.** Seed 1 has the latest handover (map FG-ARI still 41 at epoch 3), had gained the most selectivity by then (1.43), and ends with the highest selectivity of the three seeds (1.57 against 1.48 and 1.46 on the full set).
 - **The share of the loss on step 1 falls with depth** (100% at T=1, 20% at T=2, 14% at T=4, 9% at T=8), but that is not what times the handover. With no loss on the intermediate steps (`trm_final`), it comes at epoch 3 / 2 / 2 (seeds 0 / 1 / 2), no later than in T=8.
@@ -393,6 +453,8 @@ Learning curves, 3 seeds (512 validation and 512 training images; error ×10³):
 | T=8 (3 seeds) | 0.79 | 0.74 | 0.61 | 0.39 | 0.18 | 0.07 | 0.01 | 0.00 | 0.00 |
 | T=8, loss on the final step only (3 seeds) | 0.58 | 0.43 | 0.13 | 0.01 | 0.00 | 0.00 | 0.00 | 0.00 | 0.00 |
 | 1-step control (3 seeds) | 0.74 | 0.63 | 0.52 | 0.29 | 0.09 | 0.04 | 0.01 | 0.00 | 0.00 |
+| T=8, a separate block per step (3 seeds) | 0.70 | 0.56 | 0.36 | 0.12 | 0.03 | 0.01 | 0.00 | 0.00 | 0.00 |
+| T=8, one wide shared block (3 seeds) | 0.86 | 0.87 | 0.84 | 0.81 | 0.75 | 0.69 | 0.57 | 0.31 | 0.12 |
 | `mlp_block` (no recursion) | 0.97 | 0.96 | 0.96 | 0.94 | 0.92 | 0.90 | 0.85 | 0.79 | 0.69 |
 | VOC T=8 with cross-attention | 0.72 | 0.76 | 0.73 | 0.68 | 0.60 | 0.53 | 0.31 | 0.08 | 0.03 |
 | VOC T=8 without cross-attention | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
@@ -402,6 +464,7 @@ Learning curves, 3 seeds (512 validation and 512 training images; error ×10³):
   - In the epoch it starts to rise, the dependence is 0.29 / 0.31 / 0.30 for T=8 (seeds 0 / 1 / 2; epochs 3 / 4 / 3), 0.17 for T=4 (epoch 7), 0.20 for T=2 (epoch 11), 0.02 / 0.03 / 0.01 for the final-step-loss model (seeds 0 / 1 / 2; epochs 3 / 2 / 2) and 0.31 for VOC T=8 (epoch 7).
   - In the saved epoch before, it is 0.34–0.59.
   - The deeper the recursion, the sooner: T=8 is at 0.61 by epoch 2, a level T=1 reaches only at epoch 7.
+  - At the same depth, how the parameters are arranged changes the timing. With a separate block per step the dependence falls faster than in T=8. With one wide shared block it falls as slowly as T=1's until epoch 7, because the first step does nearly all the work (section 10).
 - **Each step keeps only part of slot attention's slots, and the losses compound over the steps.** At T=8's epoch 2, the dependence is 0.79–0.85 after step 1 and 0.57–0.67 after step 8 (by seed). Training lowers it at every step.
 - **When the output no longer follows them, slot attention's training gradient turns into noise.** Gradients are measured on 256 training images, in 32 batches of 8.
   - In the epoch it collapses, T=8's slot-attention gradient is 2–27× larger than in the epoch before (by seed). Its coherence across batches, the average agreement between batch gradients, falls from 0.03–0.20 to about zero (at most 0.006).
@@ -527,7 +590,7 @@ FG-ARI change per image, grouped by what the image contains (3 seed pairs), with
 - **Locality trained in reproduces most of T=8's gain.**
   - A T=1 trained with a strong locality prior also stops nearby merging.
   - It gains +0.94 against T=8's +1.19 (3 seeds), with the same pattern by image group (section 10).
-- **The README's object-size slope** (FG-ARI +4.5 for small objects, −2.0 for large ones) partly overlaps with this.
+- **The object-size slope in the [earlier analysis](../../../docs/earlier_analysis.md)** (FG-ARI +4.5 for small objects, −2.0 for large ones) partly overlaps with this.
   - 83% of the small-object images contain far same-class objects, against 8% of the large-object ones.
   - Adding same-class context shrinks the size coefficient by about a quarter, but size still adds explanatory power.
   - Per-image noise is large (R² ≤ 0.07).
@@ -831,10 +894,135 @@ The T=8 rows with all 3 seeds (seed s starts from the seed-s model; all 2,000 im
   - It cuts objects more (whole 0.604), and its error is 24% above T=1's (T=8: 13%).
 - **FG-ARI follows the object cutting.** It loses FG-ARI in images with no same-class pair (−6.00 against T=1; T=8 −2.75) and with near pairs (−1.85; T=8 +0.98). It gains nothing with far pairs (+0.26 [−0.31, +1.06]; T=8 +2.24). Its intermediate steps were never trained to reconstruct (FG-ARI 14 after step 1).
 
+**`trm_untied`: T=8 with a separate block for each step.** It tests whether the change needs the steps to share one block, or only depth with re-reading.
+- Each of the 8 steps has its own copy of the module's block (`model.trm_untie=true`).
+- The copies start as the shared block of the same seed, so the model starts as the same function as T=8 and sees the same data order.
+- Everything else is T=8's recipe: deep supervision, backpropagation through all steps, cross-attention.
+- 23.46M trainable parameters, against 6.40M.
+- Seeds 0–2, all 2,000 images, against T=1 and T=8 of the same seeds (mean of the seeds; by seed below):
+
+| seeds 0–2 | T=1 | T=8 | untied | untied − T=1 [95% CI] | − T=8 [95% CI] |
+|---|---|---|---|---|---|
+| class selectivity, 3–7 / 7–14 / > 14 tokens | 1.86 / 2.27 / 2.46 | 1.50 / 1.55 / 1.29 | 1.76 / 2.01 / 2.25 | | |
+| far similar tokens joined (no labels) | 0.452 | 0.315 | 0.427 | | |
+| dissimilar neighbours joined (no labels) | 0.066 | 0.149 | 0.081 | | |
+| far same-class sharing | 0.177 | 0.096 | 0.158 | −0.019 [−0.027, −0.010] | +0.062 [+0.054, +0.072] |
+| near same-class sharing | 0.301 | 0.246 | 0.279 | −0.022 [−0.029, −0.017] | +0.034 [+0.026, +0.038] |
+| different-class sharing | 0.110 | 0.109 | 0.104 | −0.007 [−0.010, −0.004] | −0.005 [−0.007, −0.003] |
+| whole | 0.641 | 0.631 | 0.652 | +0.011 [+0.007, +0.014] | +0.021 [+0.018, +0.025] |
+| background share | 0.413 | 0.428 | 0.412 | −0.001 [−0.003, +0.000] | −0.017 [−0.019, −0.015] |
+| error ×10³ | 29.7 | 33.6 | 29.7 | −0.04 [−0.08, +0.00] | −3.93 [−3.97, −3.88] |
+| FG-ARI | 45.8 | 47.0 | 48.1 | +2.31 [+1.94, +2.70] | +1.12 [+0.75, +1.49] |
+| ARI counting background | 24.1 | 22.0 | 24.0 | −0.09 [−0.25, +0.08] | +2.06 [+1.91, +2.20] |
+| mBO_i | 25.7 | 25.2 | 26.5 | +0.81 [+0.65, +0.98] | +1.30 [+1.16, +1.44] |
+| mBO_c | 32.9 | 31.1 | 33.3 | +0.34 [+0.13, +0.54] | +2.20 [+2.02, +2.37] |
+
+- **By seed (0 / 1 / 2):**
+  - class selectivity at 3–7 tokens 1.79 / 1.81 / 1.69 (T=1 1.81 / 1.89 / 1.87, T=8 1.48 / 1.57 / 1.46);
+  - class selectivity at > 14 tokens 2.38 / 2.44 / 1.94 (T=1 2.63 / 2.57 / 2.17, T=8 1.27 / 1.44 / 1.16);
+  - far similar tokens joined 0.432 / 0.444 / 0.406 (T=1 0.454 / 0.446 / 0.455, T=8 0.303 / 0.350 / 0.293);
+  - error 29.5 / 29.6 / 29.9 (T=1 30.3 / 29.5 / 29.3, T=8 34.1 / 32.8 / 33.9);
+  - FG-ARI 48.3 / 47.6 / 48.4 (T=1 45.9 / 45.8 / 45.6, T=8 46.8 / 47.0 / 47.1).
+  - It beats T=8 on FG-ARI, ARI counting background and both mBOs in every seed. Against T=1 it is higher on FG-ARI and mBO_i in every seed. ARI counting background (+0.25 / +0.06 / −0.57) and mBO_c (+0.63 / +0.55 / −0.16) are near T=1's and change sign in seed 2.
+
+- **It hands over sooner than T=8** (first 512 validation images; seeds 0 / 1 / 2).
+  - The output's dependence on slot attention's slots is 0.70 / 0.70 / 0.71 at epoch 0, 0.32 / 0.37 / 0.38 at epoch 2 and 0.02 / 0.02 / 0.03 at epoch 4. It is 0.00 from epoch 7. T=8's 3-seed means are 0.79, 0.61 and 0.18.
+  - Slot attention's map first groups by appearance (FG-ARI 42 / 44 / 44 at epoch 1), then collapses. Its FG-ARI is 23 / 15 / 20 at epoch 5 and 21 / 17 / 23 at the end, with a largest slot of 0.50 / 0.49 / 0.50. T=8 ends at 6.8 / 23.2 / 23.1, with a largest slot of 0.81 / 0.45 / 0.47.
+- **Then its steps build the grouping themselves.**
+  - Output class selectivity at 3–7 tokens (3-seed mean) is 1.15 / 1.44 / 1.56 at epochs 0 / 2 / 4. That is level with T=1 (1.18 / 1.31 / 1.54) and above T=8 (1.21 / 1.35 / 1.33).
+  - It keeps rising after the output has stopped depending on slot attention's slots, while slot attention's own map stays at about 1.2: 1.61 / 1.66 / 1.86 at epochs 7 / 11 / 29. T=1 has 1.76 / 1.87 / 1.98 and T=8 1.33 / 1.43 / 1.59. So at least this later rise is not taken up from slot attention.
+  - Across the 8 steps, far same-class sharing grows from 0.076 after step 1 to 0.096 after step 3 and 0.158 after step 8. In T=8 it falls from 0.110 to 0.096.
+  - Over the same steps, FG-ARI goes from 38.6 to 48.1 and error from 41.5 to 29.7 (T=8: 40.8 → 47.0 and 39.7 → 33.6). Most of the change comes at steps 4–6.
+- **Token pairs in one slot beyond 14 tokens** (3 seeds):
+  - background 0.076, same object 0.125, two same-class objects 0.028, different classes 0.012;
+  - T=1: 0.085 / 0.139 / 0.035 / 0.014; T=8: 0.057 / 0.091 / 0.014 / 0.010.
+  - That is 10–22% less than T=1, against T=8's 27–61% less. About a third of T=8's long-range change remains for background and within-object pairs (−10% against −33% and −34%).
+  - It does not merge different-class neighbours as T=8 does: +1% and −2% at ≤ 3 and 3–7 tokens against T=1 (T=8 +15% and +17%).
+- **By image group (FG-ARI against T=1):**
+  - no same-class pair: +0.89 [+0.06, +1.77] (T=8 −2.75);
+  - same-class pairs, none far: +2.63 [+2.03, +3.41] (T=8 +0.98);
+  - a far same-class pair: +2.47 [+1.96, +3.02] (T=8 +2.24).
+  - It gains where T=8 loses, and it cuts fewer objects than either (whole 0.652).
+- **It ends near the 8-step warm start from T=1, reached here from scratch.** The warm start has selectivity 1.78 / 2.06, FG-ARI 47.4, ARI counting background 24.2, mBO_i 26.3 and mBO_c 33.1. Its error is 31.1, against 29.7 here.
+- **So depth and re-reading do not make the rebuilt slots positional.**
+  - The race decides whether the module inherits slot attention's grouping. With separate blocks the handover comes sooner and the module inherits none of it either.
+  - But the untied steps then learn appearance grouping themselves. T=8's shared block, applied 8 times, does not.
+- **Caveat: capacity.** The untied model has 3.7× the trainable parameters, so on its own this test does not separate sharing from capacity. `trm_wide` (below) gives one shared block as many.
+
+**`trm_wide`: T=8 with one shared block as large as the untied model's eight.** It separates weight sharing from the untied model's extra parameters.
+- The block's MLP is widened from 1,024 to 17,664 hidden units (`model.gnn_mlp_ratio=69`). Everything else, attention included, is T=8's, as is the recipe.
+- 23.47M trainable parameters, against the untied model's 23.46M and T=8's 6.40M. The MLP acts on the 7 slot tokens only, so it adds little compute.
+- Seeds 0–2, all 2,000 images, against T=1 and T=8 of the same seeds (mean of the seeds; by seed below):
+
+| seeds 0–2 | T=1 | T=8 | wide | wide − T=1 [95% CI] | − T=8 [95% CI] |
+|---|---|---|---|---|---|
+| class selectivity, 3–7 / 7–14 / > 14 tokens | 1.86 / 2.27 / 2.46 | 1.50 / 1.55 / 1.29 | 1.77 / 2.06 / 2.13 | | |
+| far similar tokens joined (no labels) | 0.452 | 0.315 | 0.416 | | |
+| dissimilar neighbours joined (no labels) | 0.066 | 0.149 | 0.096 | | |
+| far same-class sharing | 0.177 | 0.096 | 0.142 | −0.035 [−0.045, −0.027] | +0.046 [+0.038, +0.054] |
+| near same-class sharing | 0.301 | 0.246 | 0.274 | −0.027 [−0.033, −0.020] | +0.029 [+0.022, +0.035] |
+| different-class sharing | 0.110 | 0.109 | 0.104 | −0.006 [−0.009, −0.004] | −0.004 [−0.006, −0.002] |
+| whole | 0.641 | 0.631 | 0.646 | +0.005 [+0.001, +0.008] | +0.016 [+0.012, +0.019] |
+| background share | 0.413 | 0.428 | 0.414 | +0.001 [−0.001, +0.003] | −0.015 [−0.016, −0.013] |
+| error ×10³ | 29.7 | 33.6 | 31.1 | +1.36 [+1.32, +1.40] | −2.53 [−2.58, −2.48] |
+| FG-ARI | 45.8 | 47.0 | 47.5 | +1.76 [+1.37, +2.13] | +0.57 [+0.23, +0.90] |
+| ARI counting background | 24.1 | 22.0 | 23.8 | −0.33 [−0.50, −0.17] | +1.81 [+1.65, +1.95] |
+| mBO_i | 25.7 | 25.2 | 26.3 | +0.57 [+0.41, +0.72] | +1.06 [+0.91, +1.20] |
+| mBO_c | 32.9 | 31.1 | 33.0 | +0.11 [−0.08, +0.31] | +1.97 [+1.81, +2.14] |
+
+- **By seed (0 / 1 / 2):**
+  - class selectivity at 3–7 tokens 1.82 / 1.78 / 1.70 (T=1 1.81 / 1.89 / 1.87, T=8 1.48 / 1.57 / 1.46);
+  - class selectivity at > 14 tokens 2.37 / 2.13 / 1.88 (T=1 2.63 / 2.57 / 2.17, T=8 1.27 / 1.44 / 1.16);
+  - far similar tokens joined 0.421 / 0.418 / 0.408 (T=1 0.454 / 0.446 / 0.455, T=8 0.303 / 0.350 / 0.293);
+  - error 30.5 / 31.1 / 31.7, or +0.6% / +5.3% / +7.9% against T=1 (T=1 30.3 / 29.5 / 29.3, T=8 34.1 / 32.8 / 33.9);
+  - FG-ARI 47.8 / 47.4 / 47.4 (T=1 45.9 / 45.8 / 45.6, T=8 46.8 / 47.0 / 47.1).
+  - It beats T=8 on FG-ARI, ARI counting background and both mBOs in every seed, and T=1 on FG-ARI and mBO_i. Against T=1, ARI counting background (+0.03 / −0.16 / −0.88) and mBO_c (+0.55 / +0.09 / −0.33) fall from seed 0 to seed 2. That is also the order in which the seeds hand over more (below): seed 0 hands over least and ends nearest T=1.
+
+- **Its first step does the work, so it keeps following slot attention** (first 512 validation images, 3-seed means; T=1 and T=8 as in section 4):
+
+| epoch | 0 | 2 | 4 | 7 | 11 | 29 |
+|---|---|---|---|---|---|---|
+| dependence on slot attention's slots: T=1 | 0.94 | 0.88 | 0.76 | 0.63 | 0.53 | 0.37 |
+| T=8 | 0.79 | 0.61 | 0.18 | 0.01 | 0.00 | 0.00 |
+| untied | 0.70 | 0.36 | 0.03 | 0.00 | 0.00 | 0.00 |
+| wide | 0.86 | 0.84 | 0.75 | 0.57 | 0.31 | 0.12 |
+| error removed by steps 2–8, ×10³: T=8 | 0.1 | 0.9 | 6.2 | 11.5 | 11.6 | 6.0 |
+| untied | 0.0 | 2.8 | 11.2 | 15.1 | 12.6 | 11.8 |
+| wide | 0.3 | 0.3 | 0.7 | 1.3 | 3.8 | 4.1 |
+| slot attention's map FG-ARI: T=1 | 33 | 44 | 44 | 42 | 44 | 42 |
+| T=8 | 36 | 42 | 30 | 17 | 22 | 18 |
+| wide | 32 | 45 | 44 | 42 | 35 | 31 |
+| output class selectivity, 3–7 tokens: T=1 | 1.18 | 1.31 | 1.54 | 1.76 | 1.87 | 1.98 |
+| T=8 | 1.21 | 1.35 | 1.33 | 1.33 | 1.43 | 1.59 |
+| wide | 1.15 | 1.31 | 1.45 | 1.75 | 1.61 | 1.89 |
+
+- **Until epoch 7 it is on T=1's path.** Its dependence and slot attention's map track T=1's, and slot attention's largest slot stays at 0.27–0.31 from epoch 1. The output takes up the grouping on T=1's schedule, while its later steps add almost nothing.
+- **Then it hands over, late and in part.** The later steps start to take over, and slot attention partly collapses.
+  - Dependence at epoch 11 is 0.43 / 0.33 / 0.17 and at the end 0.21 / 0.11 / 0.03 (seeds 0 / 1 / 2).
+  - Slot attention's map ends at FG-ARI 38 / 25 / 31, with a largest slot of 0.31 / 0.39 / 0.36. T=8 ends at 6.8 / 23.2 / 23.1 (largest slot 0.81 / 0.45 / 0.47).
+  - At the handover the output's selectivity dips in every seed (epoch 7 → 11: 1.66 → 1.59, 1.79 → 1.57, 1.80 → 1.68), then recovers to 1.92 / 1.93 / 1.81 at the end. So the grouping taken up before the handover is mostly kept.
+- **Most of its grouping is already in step 1's output.** Across the 8 steps, far same-class sharing goes from 0.130 to 0.142 and FG-ARI from 42.6 to 47.5 (T=8: 0.110 → 0.096 and 40.8 → 47.0; untied: 0.076 → 0.158 and 38.6 → 48.1).
+- **Token pairs in one slot beyond 14 tokens** (3 seeds):
+  - background 0.075, same object 0.120, two same-class objects 0.025, different classes 0.012;
+  - T=1: 0.085 / 0.139 / 0.035 / 0.014; T=8: 0.057 / 0.091 / 0.014 / 0.010.
+  - That is 12–30% less than T=1, against T=8's 27–61% less.
+  - It does not merge different-class neighbours as T=8 does: +4% and +3% at ≤ 3 and 3–7 tokens against T=1 (T=8 +15% and +17%).
+- **By image group (FG-ARI against T=1):**
+  - no same-class pair: +0.07 [−0.84, +0.95] (T=8 −2.75);
+  - same-class pairs, none far: +1.76 [+1.17, +2.53] (T=8 +0.98);
+  - a far same-class pair: +2.15 [+1.68, +2.74] (T=8 +2.24).
+  - ARI counting background is below T=1's in the first two groups (−0.94 [−1.41, −0.46] and −0.42 [−0.69, −0.12]), much less than T=8's −3.48 and −2.31.
+- **Stability.** Seed 0 had one transient blow-up at epoch 8: the validation error went from 37.3 to 77.4 ×10³ and output selectivity from 1.66 to 1.18, while slot attention was only dented (map FG-ARI 42 → 36). It recovered by epoch 9. Apart from it, validation FG-ARI never fell by more than 2.1 points from one epoch to the next in any seed (T=8: up to 3.4).
+- **It ends almost exactly where the 8-step warm start from T=1 ends.** The warm start has selectivity 1.78 / 2.06, FG-ARI 47.4, ARI counting background 24.2, mBO_i 26.3 and mBO_c 33.1, and its error is 4.5% above T=1's. Here: 1.77 / 2.06, 47.5, 23.8, 26.3, 33.0 and 4.6%. That run takes up the grouping with 1 step and then trains with 8; this one does both in a single run.
+- **So weight sharing is not what makes T=8 positional; T=8's small block is.**
+  - With the untied model's parameter count, one shared block also ends grouping by appearance, in every seed.
+  - But it changes the race rather than what the steps build after it. Its first step does the work, so the handover comes late, after the grouping has been taken up from slot attention. Whether a large shared block could build the grouping itself after an early handover, as the untied steps do, is not tested.
+  - All of its extra parameters are in the MLP. Eight separate blocks with T=8's total parameter count are not tested.
+
 ## 11. Robustness
 
 - Eval seeds 0 / 1 / 2:
-  - FG-ARI +1.19 / +1.12 / +0.71 (mean +1.01, matching the README's 3×3 seeds)
+  - FG-ARI +1.19 / +1.12 / +0.71 (mean +1.01, matching the earlier analysis's 3×3 seeds)
   - ARI counting background −2.14 / −2.16 / −2.29
   - mBO_c −1.86 / −1.90 / −1.94
   - far sharing −0.081 / −0.079 / −0.073
@@ -843,10 +1031,12 @@ The T=8 rows with all 3 seeds (seed s starts from the seed-s model; all 2,000 im
 
 ## 12. Corrections to earlier explanations
 
-- **"Slots become contiguous and equal in size"** (README §2): superseded. Even sizes and contiguity are by-products of grouping by position.
+- **"Slots become contiguous and equal in size"** ([earlier analysis](../../../docs/earlier_analysis.md) §2): superseded. Even sizes and contiguity are by-products of grouping by position.
 - **"Recursion removes appearance grouping"** (this report's own framing until the warm starts): too strong.
   - Recursion trained from scratch never learns it.
   - But 8-step training keeps it in a model that already has it (section 10).
+- **"The slots the steps build on their own are position-based"** (this report until `trm_untied`): true only of T=8's small shared block. With a separate block per step, the handover comes sooner and the steps build appearance-based slots themselves (section 10).
+- **"Sharing one block is what makes the self-built slots positional"** (this report between `trm_untied` and `trm_wide`): the untied model also has 3.7× the parameters. One shared block with as many ends grouping by appearance too, though by taking the grouping up from slot attention before a late handover (section 10).
 - **"Recursion returns to slot attention's grouping":** wrong. Slot attention's own map collapses at T=8 (FG-ARI 17.6), and the output agrees with it at ARI 0.20. T=8's grouping *profile* is close to the no-module baseline's (section 2), but that is a statement about distance and class, not about slot attention's map.
 - **"Two separate effects, locality and a uniform degradation"** (an earlier draft of this report): the evidence was wrong, but two parts can be separated.
   - The evidence then was that the costs are uniform across images. Uniformity can't separate the two, because imposed locality costs reconstruction just as uniformly (section 5).
@@ -861,12 +1051,17 @@ The T=8 rows with all 3 seeds (seed s starts from the seed-s model; all 2,000 im
 ## Limitations
 
 - **Training data:** one dataset at 3 seeds (COCO subset). VOC-trained models are a single seed; T=2 and T=4 are single seeds.
-- **Controls:** the 1-step and final-step-loss controls, the warm starts from the final epoch (6 epochs each) and both locality priors have three seeds each.
-- **Timeline (section 4):** T=2, T=4 and the references are seed 0 only; T=1, T=8 and both controls have three seeds. Checkpoints are per epoch, so events within an epoch cannot be ordered.
+- **Controls:** the 1-step, final-step-loss, untied and wide controls, the warm starts from the final epoch (6 epochs each) and both locality priors have three seeds each.
+- **Untied and wide controls:**
+  - Both have 3.7× T=8's trainable parameters (23.46M and 23.47M against 6.40M).
+  - The wide model's extra parameters are all in its block's MLP, not in attention.
+  - Not tested: eight separate blocks with T=8's total parameter count, and a large shared block that hands over early.
+  - No probes or attention measures were run for either.
+- **Timeline (section 4):** T=2, T=4 and the references are seed 0 only; T=1, T=8 and the 1-step, final-step-loss, untied and wide controls have three seeds. Checkpoints are per epoch, so events within an epoch cannot be ordered.
 - **Critical-period runs:** 6 epochs each (8 epochs of training in total). The T=8 runs have 3 seeds; the T=1 runs and the decaying-schedule 8-step run are seed 0 only. They test the order of events, not final quality.
 - **Dependence and gradient measures (section 4):**
   - 512 validation images, and 256 training images for the gradients.
-  - Dependence: three seeds for T=1, T=8 and both controls, seed 0 for the rest. Gradients: three seeds for T=1 and T=8 (seeds 1–2 at epochs 0–7), seed 0 for the rest.
+  - Dependence: three seeds for T=1, T=8 and the four controls above, seed 0 for the rest. Gradients: three seeds for T=1 and T=8 (seeds 1–2 at epochs 0–7), seed 0 for the rest.
   - The VOC models are scored on COCO images.
   - They show the order of events. The causal tests are the warm starts and the frozen rescue.
 - **Selectivity and error:** the link in section 5 is a correlation over 15 module models and seeds, not a causal test. It over-predicts the error of the b = 40 prior by 1.0–1.7 and under-predicts that of the final-step-loss model, below the fitted range, by 0.9–2.0.

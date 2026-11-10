@@ -55,7 +55,7 @@ These scripts produce the numbers in `results/coco/diagnostics/recursion_mechani
    | `voc_an.py` | 7 |
    | `rec_report.py`, `it_an.py` | 8 |
    | `ro.py` | 9: slot-attention map vs decoder masks |
-   | `featsim.py C` (GPU) | 1: slot sharing by distance and DINO feature similarity, no ground truth |
+   | `featsim.py C [extras]` (GPU) | 1, 10: slot sharing by distance and DINO feature similarity, no ground truth. Extras as in `bgloc.py`; `FEATSIM_TAG=_x` saves `featsim_x.npz` |
    | `bgloc.py C [extras]` | 1, 5: token-pair slot sharing by distance (background, same object, same class, different class). Extras are `name=pattern` with `{s}` for the seed suffix (e.g. `fin=trm_final{s}`); `BGLOC_TAG=_x` saves `bgloc_x.npz` |
    | `curve_an.py`, `curve_sa_an.py`, `curve_cmp.py` | 4, 10: learning curves, slot-attention collapse, the 1-step control |
    | `locprior.py` | 5, 6: locality imposed on T=1 by group |
@@ -71,10 +71,17 @@ These scripts produce the numbers in `results/coco/diagnostics/recursion_mechani
    | `fig_mech.py C OUT` | `recursion_groups.png`, `recursion_dose.png` |
    | `fig_profile.py C OUT` | `recursion_profile.png` |
    | `fig_examples.py C OUT` | `recursion_examples.png` |
+   | `fig_readme.py C results/figures` | `readme_examples.png`: the main README's two examples, chosen for clarity |
    | `fig_selectivity.py C OUT` | `recursion_selectivity.png`: reconstruction error against class selectivity and long-range locality (5) |
    | `fig_race.py C OUT` | `recursion_race.png`: the output's dependence on slot attention's slots, slot attention's own map and class selectivity over training (4) |
 
 `post_control.sh <run>` waits for a control run (`scripts/runs/run_coco_recursion_controls.sh`) to finish, then runs `gpu_batch.py` and `mech_ctrl.py` on it.
+
+The untied and wide controls (`trm_untied*`, `trm_wide*`) use the same scripts:
+- `gpu_batch.py` and `mech_ctrl.py` on each seed;
+- `ctrl_an.py C trm_untied` (or `trm_wide`);
+- `bgloc.py` and `featsim.py` with the extra `unt=trm_untied{s}` (or `wide=trm_wide{s}`);
+- at epochs 0–5, 7, 11 and 29: `handover.py`, `curve.py`, `curve_sa.py`, `sel_curve.py` and `sa_curve_any.py`.
 
 `ws_process.sh <run>` scores a finished warm start (`scripts/runs/run_coco_warmstart.sh`): `gpu_batch.py` and `mech_ctrl.py` on all images, then per-epoch curves of the output and of slot attention's map (`curve.py`, `curve_sa.py`, `sel_curve.py`, `sa_curve_any.py`) and the per-step error. `peek.sh <run> <epochs>` does the per-epoch part for a run still training.
 
