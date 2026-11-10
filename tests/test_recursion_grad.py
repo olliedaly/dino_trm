@@ -116,6 +116,54 @@ def test_detach_steps_keeps_forward_and_cuts_gradient():
     assert slots0.grad is not None and slots0.grad.norm().item() > 0
 
 
+def test_untie_steps_same_start_separate_blocks():
+    """untie_steps (depth without weight sharing): steps 2..T get their own blocks, copies
+    of the shared one that draw no random numbers, so a run starts from the same weights
+    and data order as the tied model of the same seed. A final-step loss trains every copy."""
+    torch.manual_seed(0)
+    tied = TRMReasoner(slot_dim=SLOT_DIM, n_steps=T, gnn_layers=2)
+    r_tied = torch.rand(1)
+    torch.manual_seed(0)
+    untied = TRMReasoner(slot_dim=SLOT_DIM, n_steps=T, gnn_layers=2, untie_steps=True)
+    assert torch.equal(torch.rand(1), r_tied)
+    assert not any(k.startswith("step_gnns") for k in tied.state_dict())  # checkpoint compat
+    s = untied.state_dict()
+    for k, v in tied.state_dict().items():
+        assert torch.equal(s[k], v)
+        if k.startswith("tiny_gnn."):
+            assert all(torch.equal(s[f"step_gnns.{i}.{k[9:]}"], v) for i in range(T - 1))
+
+    sa, reasoner, decoder, proj, target = _setup()  # nudged heads: a non-trivial recursion
+    untied.load_state_dict(reasoner.state_dict(), strict=False)
+    for g in untied.step_gnns:
+        g.load_state_dict(reasoner.tiny_gnn.state_dict())
+    slots0 = sa(proj)[0].detach()
+    ys = untied(slots0)["y"]
+    assert all(torch.equal(a, b) for a, b in zip(reasoner(slots0)["y"], ys))
+    torch.nn.functional.mse_loss(decoder(ys[-1])[0], target).backward()
+    for g in [untied.tiny_gnn, *untied.step_gnns]:
+        assert g.to_y.weight.grad is not None and g.to_y.weight.grad.norm().item() > 0
+
+
+def test_gnn_mlp_ratio_widens_only_the_ffn():
+    """gnn_mlp_ratio (the parameter-matched shared control): the default keeps the
+    original shapes (checkpoint compat); a wider ratio changes only the FFN shapes, and
+    69 gives the shared block as many parameters as the untied blocks at slot_dim 256."""
+    tied = TRMReasoner(slot_dim=SLOT_DIM, n_steps=T, gnn_layers=2, gnn_cross_attn=True)
+    default = TRMReasoner(slot_dim=SLOT_DIM, n_steps=T, gnn_layers=2, gnn_cross_attn=True, gnn_mlp_ratio=4)
+    wide = TRMReasoner(slot_dim=SLOT_DIM, n_steps=T, gnn_layers=2, gnn_cross_attn=True, gnn_mlp_ratio=69)
+    shapes = lambda m: {k: v.shape for k, v in m.state_dict().items()}
+    assert shapes(default) == shapes(tied)
+    changed = {k for k, s in shapes(wide).items() if s != shapes(tied)[k]}
+    assert changed and all(".mlp." in k for k in changed)
+    assert shapes(wide).keys() == shapes(tied).keys()
+
+    n = lambda m: sum(p.numel() for p in m.parameters())
+    kw = dict(slot_dim=256, n_steps=T, gnn_layers=2, gnn_cross_attn=True)
+    wide256, untied256 = TRMReasoner(**kw, gnn_mlp_ratio=69), TRMReasoner(**kw, untie_steps=True)
+    assert abs(n(wide256) - n(untied256)) < 0.001 * n(untied256)
+
+
 def test_coupled_rebind_grad_to_slot_attention():
     """In coupled mode, gradient reaches slot-attention params via the rebind path."""
     sa, reasoner, decoder, proj, target = _setup()

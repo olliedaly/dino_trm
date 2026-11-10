@@ -30,8 +30,14 @@ model:
   gnn_combine: concat    # how TinyGNN fuses (x,y,z): "concat" (learned routing) | "sum"
   gnn_cross_attn: false  # true = slots re-read patches via cross-attn each step (Step 1)
   mlp_block_layers: 3    # depth of the non-recursive control reasoner (mode=mlp_block)
-  sa_detach: false       # mode=sa_rec: detach slots between iterations (1-step gradients)
+  sa_detach: false       # detach slots between slot-attention iterations (1-step gradients).
+                         # mode=sa_rec: each iteration's loss trains that update only.
+                         # mode=baseline: the one loss trains the last update only.
   trm_detach: false      # mode=trm/coupled: detach y, z between steps (1-step gradients)
+  trm_untie: false       # mode=trm/coupled: a separate block per step, each starting as a
+                         # copy of the shared one (depth without weight sharing)
+  gnn_mlp_ratio: 4       # mode=trm/coupled: FFN width of the module's blocks (x slot_dim);
+                         # 69 gives the shared block the untied model's parameter count
   loc_bias: 0.0          # >0: decoder locality prior, alpha logit -= loc_bias * squared
                          # distance (image widths) from the slot's mask centroid
   image_size: 336        # 21x21 = 441 patches (vs 14x14 @224); finer masks, ~7.8GB

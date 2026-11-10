@@ -82,6 +82,7 @@ class TinyGNN(nn.Module):
         n_latent_steps: int = 1,
         combine: str = "concat",
         cross_attn: bool = False,
+        mlp_ratio: int = 4,
     ) -> None:
         super().__init__()
         assert combine in {"sum", "concat"}, combine
@@ -100,7 +101,8 @@ class TinyGNN(nn.Module):
             self.combine_proj = nn.Linear(3 * slot_dim, slot_dim)
 
         self.blocks = nn.ModuleList(
-            [_Block(slot_dim, n_heads=n_heads, cross_attn=cross_attn) for _ in range(n_layers)]
+            [_Block(slot_dim, n_heads=n_heads, mlp_ratio=mlp_ratio, cross_attn=cross_attn)
+             for _ in range(n_layers)]
         )
 
         # Residual read-out heads for the two streams.

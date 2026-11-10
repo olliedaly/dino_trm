@@ -3,7 +3,9 @@
 Runs the TinyGNN block for ``n_steps`` outer steps with **full backprop through the
 entire recursion** (no 1-step gradient approximation — TRM showed that matters;
 ``detach_steps=True`` instead cuts the gradient between steps, as TRM does between its
-deep-supervision steps). At
+deep-supervision steps; ``untie_steps=True`` gives every step its own copy of the block,
+for depth without weight sharing; ``gnn_mlp_ratio`` widens the block's FFN, e.g. to give
+the shared block as many parameters as the untied ones). At
 each step it emits the refined answer ``y_t`` (for deep supervision) and an ACT-style
 halting logit ``Q(z_t)`` computed in fp32 (bf16 over a deep recursion can NaN the
 halting sigmoid).
@@ -18,6 +20,7 @@ step's perceptual evidence, so binding and reasoning interleave.
 
 from __future__ import annotations
 
+import copy
 from typing import Callable
 
 import torch
@@ -37,6 +40,8 @@ class TRMReasoner(nn.Module):
         gnn_combine: str = "concat",
         gnn_cross_attn: bool = False,
         detach_steps: bool = False,
+        untie_steps: bool = False,
+        gnn_mlp_ratio: int = 4,
     ) -> None:
         super().__init__()
         self.n_steps = n_steps
@@ -51,6 +56,15 @@ class TRMReasoner(nn.Module):
             n_latent_steps=n_latent_steps,
             combine=gnn_combine,
             cross_attn=gnn_cross_attn,
+            mlp_ratio=gnn_mlp_ratio,
+        )
+        # True = a separate block for steps 2..n_steps (step 1 keeps tiny_gnn). Each
+        # starts as a copy of tiny_gnn and the copies draw no random numbers, so the
+        # module starts as the same function as the tied one of the same seed and
+        # differs only in not sharing weights. Off: no extra keys (checkpoint compat).
+        self.step_gnns = (
+            nn.ModuleList(copy.deepcopy(self.tiny_gnn) for _ in range(n_steps - 1))
+            if untie_steps else None
         )
         # Learned latent initialisation.
         self.z0 = nn.Parameter(torch.zeros(1, 1, slot_dim))
@@ -62,6 +76,12 @@ class TRMReasoner(nn.Module):
             nn.GELU(),
             nn.Linear(slot_dim, 1),
         )
+
+    def _gnn(self, t: int) -> TinyGNN:
+        """The block for step t (from 0). Untied steps past the trained depth reuse the last."""
+        if self.step_gnns is None or t == 0:
+            return self.tiny_gnn
+        return self.step_gnns[min(t, len(self.step_gnns)) - 1]
 
     def init_latent(self, x: torch.Tensor) -> torch.Tensor:
         b, k, _ = x.shape
@@ -85,14 +105,14 @@ class TRMReasoner(nn.Module):
         zs: list[torch.Tensor] = []
         halts: list[torch.Tensor] = []
 
-        for _ in range(self.n_steps):
+        for t in range(self.n_steps):
             if self.detach_steps and ys:
                 y, z = y.detach(), z.detach()
             x_t = rebind(z) if rebind is not None else x  # Phase 3 re-binding
             if rebind is not None:
                 # Fresh binding also reseeds the answer stream for this step.
                 y = x_t if not ys else y
-            y, z = self.tiny_gnn(x_t, y, z, patches)
+            y, z = self._gnn(t)(x_t, y, z, patches)
             # Halting score in fp32 for numerical stability over the recursion.
             halt = self.halt_head(z.float()).mean(dim=1)  # (B, 1)
             ys.append(y)

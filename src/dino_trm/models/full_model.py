@@ -59,8 +59,10 @@ class DinoSlotModel(nn.Module):
         gnn_combine: str = "concat",
         gnn_cross_attn: bool = False,
         mlp_block_layers: int = 3,   # depth of the non-recursive control reasoner
-        sa_detach: bool = False,     # sa_rec: detach slots between iterations (1-step grads)
+        sa_detach: bool = False,     # detach slots between slot-attention iterations (1-step grads)
         trm_detach: bool = False,    # trm/coupled: detach y, z between steps (1-step grads)
+        trm_untie: bool = False,     # trm/coupled: a separate block per step (no weight sharing)
+        gnn_mlp_ratio: int = 4,      # trm/coupled: FFN width of the module's blocks (x slot_dim)
         loc_bias: float = 0.0,       # decoder locality prior (0 = off); see SpatialBroadcastDecoder
         image_size: int = 336,
         target_norm: bool = True,
@@ -121,6 +123,8 @@ class DinoSlotModel(nn.Module):
                 gnn_combine=gnn_combine,
                 gnn_cross_attn=gnn_cross_attn,
                 detach_steps=trm_detach,
+                untie_steps=trm_untie,
+                gnn_mlp_ratio=gnn_mlp_ratio,
             )
         elif mode == "mlp_block":
             self.reasoner = MLPBlockReasoner(
@@ -164,7 +168,10 @@ class DinoSlotModel(nn.Module):
                 "attn_list": attn_all,     # n_iters tensors (B, K, N)
             }
 
-        slots0, attn0, q0 = self.slot_attention(proj, return_queries=True)  # initial binding
+        # sa_detach also applies here (off by default): mode=baseline with slot_iters=8 and
+        # sa_detach=true trains slot attention through its last update only.
+        slots0, attn0, q0 = self.slot_attention(
+            proj, return_queries=True, detach_iters=self.sa_detach)  # initial binding
         queries = [q0]  # slot queries collected for the orthogonality loss
 
         if self.mode == "baseline":
