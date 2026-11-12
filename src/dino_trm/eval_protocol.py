@@ -5,7 +5,7 @@ metric-vs-recursion-depth trend but not comparable to published numbers):
 
   * Predicted slot masks are upsampled to **image resolution** and the metric is
     computed there (not at the 14²/21² patch grid).
-  * GT **instance** masks: COCO/MOVi loaders provide true instance maps (``inst_full``),
+  * GT **instance** masks: the COCO loader provides true instance maps (``inst_full``),
     used directly. For VOC they are derived from the semantic mask via connected
     components (``semantic_to_instance``), exactly as the reference does — VOC's
     semantic masks don't separate instances.

@@ -35,5 +35,5 @@ docs/sa_loop_plan*.md
 RESEARCH_PLAN.md
 logs/
 
-# MOVi-C runs are in progress and not reported yet
+# Local-only runs on a dataset this repo does not report
 results/movi/

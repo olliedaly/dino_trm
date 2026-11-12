@@ -37,8 +37,7 @@ from dino_trm.models.full_model import DinoSlotModel
 
 DEVICE = "cuda"
 # per-dataset (checkpoint dir, results dir), mirroring scripts/eval_published.py
-DIRS = {"coco": ("checkpoints/coco", "results/coco"), "voc": ("checkpoints", "results"),
-        "movi": ("checkpoints/movi", "results/movi")}
+DIRS = {"coco": ("checkpoints/coco", "results/coco"), "voc": ("checkpoints", "results")}
 
 
 def set_seed(s: int) -> None:
