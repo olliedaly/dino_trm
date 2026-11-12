@@ -347,10 +347,9 @@ minus the baseline. The map compares both at 8 passes. The decoder's masks compa
   not scored.
 - **Running the baseline for 8 passes helps its map but hurts its decoder's masks**
   (FG-ARI 43.9 to 41.1), because the decoder only ever saw 3-pass slots.
-- **Two earlier observations rest on seed 0 of D alone.** For objects of 16 to 64
-  patches its best slot's IoU is 50.2, against 46.8 for the baseline's map. And its
-  slots do not move towards dividing the image by position, which is what the module
-  did at T=8.
+- **One earlier observation rests on seed 0 of D alone:** its slots do not move
+  towards dividing the image by position, which is what the module did at T=8
+  ([mechanism report](../results/coco/diagnostics/recursion_mechanism.md), section 8).
 - **The idea is not new.** Locatello et al. (2020) propose a loss at every iteration as
   a remedy when training with more iterations, and report it helping set prediction.
   Chang, Griffiths and Levine (2022) train slot attention with the gradient of the last

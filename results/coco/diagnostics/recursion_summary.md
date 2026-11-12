@@ -21,6 +21,7 @@ These are results about this module in this pipeline. Section 4 lists what they 
   - One step runs the block twice: once to update a per-slot latent, once to update the slots. Slot attention's slots are fed in again at every step.
   - T=1 runs one step. T=8 runs 8 steps with the same weights, backpropagates through all of them, and has a loss after every step (weight 0.25 on steps 1–7).
   - The module is 2.5M of the model's 6.40M parameters. The no-module baseline has a wider decoder, so it also has 6.40M.
+  - The project's first comparison used a narrower baseline of 3.89M parameters (`baseline`, one seed). T=8 scored 4.2 FG-ARI above it (seed 0 of each, mean of three evaluation seeds). Against the matched baseline the gap is 3.1 (3 seeds). Both come from the files in `results/coco/per_image/`.
 - **Training.** A COCO 2017 subset: 25k training images, each with at least 3 non-crowd objects covering at least 0.5% of the image. 30 epochs (about 23k steps), 3 seeds per model.
 - **Statistics.** Differences are paired per image and averaged over the three seed pairs. Brackets are 95% image-bootstrap intervals.
 - **Grouping, measured without labels** on the 21×21 patch grid:

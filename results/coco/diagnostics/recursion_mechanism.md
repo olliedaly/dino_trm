@@ -590,7 +590,7 @@ FG-ARI change per image, grouped by what the image contains (3 seed pairs), with
 - **Locality trained in reproduces most of T=8's gain.**
   - A T=1 trained with a strong locality prior also stops nearby merging.
   - It gains +0.94 against T=8's +1.19 (3 seeds), with the same pattern by image group (section 10).
-- **The object-size slope in the [earlier analysis](../../../docs/earlier_analysis.md)** (FG-ARI +4.5 for small objects, −2.0 for large ones) partly overlaps with this.
+- **The object-size slope from this project's first analysis** (FG-ARI +4.5 for small objects, −2.0 for large ones; that write-up is in the repository history) partly overlaps with this.
   - 83% of the small-object images contain far same-class objects, against 8% of the large-object ones.
   - Adding same-class context shrinks the size coefficient by about a quarter, but size still adds explanatory power.
   - Per-image noise is large (R² ≤ 0.07).
@@ -1031,7 +1031,7 @@ The T=8 rows with all 3 seeds (seed s starts from the seed-s model; all 2,000 im
 
 ## 12. Corrections to earlier explanations
 
-- **"Slots become contiguous and equal in size"** ([earlier analysis](../../../docs/earlier_analysis.md) §2): superseded. Even sizes and contiguity are by-products of grouping by position.
+- **"Slots become contiguous and equal in size"** (this project's first analysis, now only in the repository history): superseded. Even sizes and contiguity are by-products of grouping by position.
 - **"Recursion removes appearance grouping"** (this report's own framing until the warm starts): too strong.
   - Recursion trained from scratch never learns it.
   - But 8-step training keeps it in a model that already has it (section 10).

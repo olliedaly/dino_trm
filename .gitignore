@@ -17,8 +17,9 @@ checkpoints/
 # Hydra per-run output dirs (logs/configs duplicated under results/)
 outputs/
 
-# Intermediate training-progress mask snapshots (keep only *_final.png)
+# Mask snapshots written during training (no report uses them)
 results/**/masks_step*.png
+results/**/masks_final.png
 
 # Transient COCO download / training progress logs
 results/coco_download.log
