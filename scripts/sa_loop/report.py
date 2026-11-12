@@ -1,13 +1,16 @@
-"""Results table and decision for the slot-attention-loop arms (docs/sa_loop_plan.md).
+"""Results table and decision for the slot-attention-loop arms.
 
 Reads results/sa_loop/per_image/{run}.npz (written by eval_arms.py). Prints, as markdown:
   1. checks that every run is configured as its arm requires;
   2. each arm's scores (mean of its seeds, then the seeds);
   3. paired differences between arms: per image, averaged over the matched seeds, with a
      95% image-bootstrap interval, and the difference in each seed pair;
-  4. the decision, by the rule fixed in the plan before any run was scored.
+  4. the decision, by the rule fixed in the plan before the stage's runs were scored.
 
-    uv run python scripts/sa_loop/report.py --stage 1 [--out results/sa_loop/stage1_report.md]
+Stages: 1 = arms A-D on COCO; 2 = the same at 448 px; 3 = arms A-F on COCO (E: ordinary
+8-pass training, F: each image decoded at one sampled pass); 4 = arms A, B, E, F on PASCAL VOC.
+
+    uv run python scripts/sa_loop/report.py --stage 3 [--out results/sa_loop/stage3_report.md]
     uv run python scripts/sa_loop/report.py --stage 1 --check-reference   # stage 0
 """
 import argparse
@@ -19,31 +22,46 @@ import numpy as np
 DIR = "results/sa_loop/per_image"
 SEEDS = ["", "_seed1", "_seed2"]
 METRICS = [("fg_ari", "FG-ARI"), ("mbo_i", "mBO_i"), ("mbo_c", "mBO_c"), ("ari_bg", "ARI counting background")]
+MIN_GAIN = 0.5  # mBO_i points; fixed before the runs
 
-# arm -> (run base name, passes used at test time, required settings)
+# Required settings of each kind of arm (keys of the per-image file's "meta").
+BASE3 = dict(mode="baseline", trained_passes=3, sa_detach=False)
+LAST8 = dict(mode="baseline", trained_passes=8, sa_detach=True)
+EACH8 = dict(mode="sa_rec", trained_passes=8, sa_detach=True, sa_sample_pass=False, intermediate_weight=0.25)
+FULL8 = dict(mode="baseline", trained_passes=8, sa_detach=False)
+RAND8 = dict(mode="sa_rec", trained_passes=8, sa_detach=True, sa_sample_pass=True, intermediate_weight=0.25)
+DEFAULTS = dict(dataset="coco", sa_sample_pass=False)  # for files written before these keys existed
+
+# stage -> dataset, image size, images, parameters (M), arms {name: (run base name, test passes, settings)},
+#          the contrasts to print, the arm under test and the arms it must beat
 STAGES = {
-    1: {
-        "A": ("baseline_pm", 3, dict(mode="baseline", trained_passes=3, sa_detach=False, image_size=336)),
-        "B": ("baseline_pm", 8, dict(mode="baseline", trained_passes=3, sa_detach=False, image_size=336)),
-        "C": ("sa8_last", 8, dict(mode="baseline", trained_passes=8, sa_detach=True, image_size=336)),
-        "D": ("sa_rec_1step", 8, dict(mode="sa_rec", trained_passes=8, sa_detach=True, image_size=336,
-                                      intermediate_weight=0.25)),
-    },
-    2: {
-        "A": ("sa3_r448", 3, dict(mode="baseline", trained_passes=3, sa_detach=False, image_size=448)),
-        "B": ("sa3_r448", 8, dict(mode="baseline", trained_passes=3, sa_detach=False, image_size=448)),
-        "C": ("sa8_last_r448", 8, dict(mode="baseline", trained_passes=8, sa_detach=True, image_size=448)),
-        "D": ("sa8_each_r448", 8, dict(mode="sa_rec", trained_passes=8, sa_detach=True, image_size=448,
-                                       intermediate_weight=0.25)),
-    },
+    1: dict(dataset="coco", image_size=336, images=2000, params=6.3967,
+            arms={"A": ("baseline_pm", 3, BASE3), "B": ("baseline_pm", 8, BASE3),
+                  "C": ("sa8_last", 8, LAST8), "D": ("sa_rec_1step", 8, EACH8)},
+            contrasts=[("D", "C"), ("D", "B"), ("C", "B"), ("B", "A")], method="D", controls=["C", "B"]),
+    2: dict(dataset="coco", image_size=448, images=2000, params=6.4845,
+            arms={"A": ("sa3_r448", 3, BASE3), "B": ("sa3_r448", 8, BASE3),
+                  "C": ("sa8_last_r448", 8, LAST8), "D": ("sa8_each_r448", 8, EACH8)},
+            contrasts=[("D", "C"), ("D", "B"), ("C", "B"), ("B", "A")], method="D", controls=["C", "B"]),
+    3: dict(dataset="coco", image_size=336, images=2000, params=6.3967,
+            arms={"A": ("baseline_pm", 3, BASE3), "B": ("baseline_pm", 8, BASE3),
+                  "C": ("sa8_last", 8, LAST8), "D": ("sa_rec_1step", 8, EACH8),
+                  "E": ("sa8_full", 8, FULL8), "F": ("sa8_rand", 8, RAND8)},
+            contrasts=[("F", "B"), ("F", "C"), ("F", "E"), ("D", "F"), ("D", "E"), ("E", "B")],
+            method="F", controls=["B", "C", "E"]),
+    4: dict(dataset="voc", image_size=336, images=1449, params=6.3967,
+            arms={"A": ("baseline_pm_m", 3, BASE3), "B": ("baseline_pm_m", 8, BASE3),
+                  "E": ("sa8_full_voc", 8, FULL8), "F": ("sa8_rand_voc", 8, RAND8)},
+            contrasts=[("F", "B"), ("F", "E"), ("E", "B"), ("B", "A")], method="F", controls=["B", "E"]),
 }
 WHAT = {
     "A": "slot attention trained with 3 passes",
     "B": "A's weights, run for 8 passes at test time",
     "C": "trained with 8 passes, gradient from the last update only",
     "D": "trained with 8 passes, a loss after each pass",
+    "E": "trained with 8 passes the ordinary way (one loss, full gradient)",
+    "F": "as D, but each image is decoded at one sampled pass",
 }
-CONTRASTS = [("D", "C"), ("D", "B"), ("C", "B"), ("B", "A")]
 # Stage-0 reference: what the existing checkpoints scored on 2026-11-09 (eval seed 0).
 # (arm, readout, metric) -> (value, tolerance); "A"/"B" are 3-seed means, "D0" is seed 0 of D.
 REFERENCE = {
@@ -54,8 +72,6 @@ REFERENCE = {
     ("D0", "map", "fg_ari"): (49.18, 0.2), ("D0", "map", "mbo_i"): (27.27, 0.15), ("D0", "map", "mbo_c"): (34.20, 0.15),
     ("D0", "map", "ari_bg"): (25.85, 0.2), ("D0", "dec", "fg_ari"): (44.54, 0.2), ("D0", "err", ""): (30.97, 0.1),
 }
-MIN_GAIN = 0.5  # mBO_i points; fixed before the runs
-PARAMS_M = {1: 6.3967, 2: 6.4845}  # trainable parameters at 336 px and at 448 px (more position codes)
 
 
 def load(run, d=DIR):
@@ -64,7 +80,7 @@ def load(run, d=DIR):
         return None
     z = np.load(p)
     d = {k: z[k] for k in z.files if k != "meta"}
-    d["meta"] = json.loads(str(z["meta"]))
+    d["meta"] = {**DEFAULTS, **json.loads(str(z["meta"]))}
     return d
 
 
@@ -86,7 +102,8 @@ def main() -> None:
     ap.add_argument("--check-reference", action="store_true",
                     help="stage 0: compare the existing checkpoints' scores with the reference values")
     a = ap.parse_args()
-    arms = STAGES[a.stage]
+    st = STAGES[a.stage]
+    arms = st["arms"]
     L = []
     data, problems = {}, []
     for arm, (base, n, need) in arms.items():
@@ -96,23 +113,25 @@ def main() -> None:
             if d is None:
                 continue
             m = d["meta"]
-            for k, v in need.items():
+            for k, v in {**need, "dataset": st["dataset"], "image_size": st["image_size"]}.items():
                 if m.get(k) != v:
                     problems.append(f"{base + s}: {k} is {m.get(k)!r}, arm {arm} needs {v!r}")
             if m["seed"] != SEEDS.index(s):
                 problems.append(f"{base + s}: trained with seed {m['seed']}")
-            if abs(m["params_M"] - PARAMS_M[a.stage]) > 0.001:
-                problems.append(f"{base + s}: {m['params_M']}M parameters, expected {PARAMS_M[a.stage]}M")
+            if abs(m["params_M"] - st["params"]) > 0.001:
+                problems.append(f"{base + s}: {m['params_M']}M parameters, expected {st['params']}M")
             if f"map{n}|fg_ari" not in d:
                 problems.append(f"{base + s}: not scored at {n} passes; rerun eval_arms.py with --passes 3,8 --force")
                 continue
-            if len(d[f"err{n}"]) != 2000:
-                problems.append(f"{base + s}: {len(d[f'err{n}'])} images, expected 2000")
+            if len(d[f"err{n}"]) != st["images"]:
+                problems.append(f"{base + s}: {len(d[f'err{n}'])} images, expected {st['images']}")
             data[arm].append(d)
+    problems = list(dict.fromkeys(problems))  # arms A and B share runs
 
     L.append(f"# Slot-attention loop, stage {a.stage}\n")
     L.append("## Checks\n")
-    L += [f"- PROBLEM: {p}" for p in problems] or [f"- Every scored run has its arm's settings, 2,000 images and {PARAMS_M[a.stage]}M parameters."]
+    L += [f"- PROBLEM: {p}" for p in problems] or [
+        f"- Every scored run has its arm's settings, {st['images']:,} images and {st['params']}M parameters."]
     L.append("- Seeds scored: " + ", ".join(f"{arm} {len(v)}/3" for arm, v in data.items()) + "\n")
 
     if a.check_reference:
@@ -160,7 +179,7 @@ def main() -> None:
     L.append("| contrast | " + " | ".join(lab for _, lab in METRICS) + " |\n|---|" + "---|" * len(METRICS))
     rng = np.random.default_rng(0)
     res = {}
-    for x, y in CONTRASTS:
+    for x, y in st["contrasts"]:
         k = min(len(data[x]), len(data[y]))
         if k == 0:
             continue
@@ -173,16 +192,18 @@ def main() -> None:
             cells.append(f"{mean:+.2f} [{lo:+.2f}, {hi:+.2f}] ({' / '.join(f'{s:+.2f}' for s in seeds)})")
         L.append(f"| {x} - {y} ({k} seed pair{'s' if k > 1 else ''}) | " + " | ".join(cells) + " |")
 
-    L.append("\n## Decision\n")
-    if any(len(v) < 3 for v in data.values()) or problems:
-        L.append("**INCOMPLETE.** All four arms need 3 correctly configured seeds before the rule applies.")
-    else:
-        def gain(x, y):
-            r = res[(x, y, "mbo_i")]
-            return r["mean"] >= MIN_GAIN and r["lo"] > 0 and all(s > 0 for s in r["seeds"])
+    def gain(x, y):
+        r = res[(x, y, "mbo_i")]
+        return r["mean"] >= MIN_GAIN and r["lo"] > 0 and all(s > 0 for s in r["seeds"])
 
-        def no_loss(x, y):
-            return all(res[(x, y, m)]["hi"] >= 0 for m in ("fg_ari", "mbo_c", "ari_bg"))
+    def no_loss(x, y):
+        return all(res[(x, y, m)]["hi"] >= 0 for m in ("fg_ari", "mbo_c", "ari_bg"))
+
+    L.append("\n## Decision\n")
+    T, controls = st["method"], st["controls"]
+    if any(len(v) < 3 for v in data.values()) or problems:
+        L.append("**INCOMPLETE.** Every arm needs 3 correctly configured seeds before the rule applies.")
+    elif a.stage in (1, 2):
         r1, r2 = gain("D", "C"), gain("D", "B")
         r3 = no_loss("D", "C") and no_loss("D", "B")
         L.append(f"- Rule 1, D beats C on mBO_i (mean >= +{MIN_GAIN}, interval above 0, every seed pair above 0): "
@@ -198,6 +219,32 @@ def main() -> None:
                      "per-pass loss adds nothing beyond training through the last update only.")
         elif not r2:
             L.append("**STOP: the one-seed result did not replicate.** D does not beat the baseline run for 8 passes.")
+        else:
+            L.append("**STOP: the gain comes with a loss on another score.** See the differences table.")
+    else:
+        gains = {c: gain(T, c) for c in controls}
+        clean = all(no_loss(T, c) for c in controls)
+        for i, c in enumerate(controls, 1):
+            L.append(f"- Rule {i}, {T} beats {c} on mBO_i (mean >= +{MIN_GAIN}, interval above 0, every seed pair "
+                     f"above 0): **{'yes' if gains[c] else 'no'}**")
+        L.append(f"- Rule {len(controls) + 1}, {T} is not below {', '.join(controls)} on FG-ARI, mBO_c or ARI counting "
+                 f"background (no interval entirely below 0): **{'yes' if clean else 'no'}**\n")
+        if all(gains.values()) and clean:
+            L.append("**PASS.** With each image decoded at one sampled pass, at the baseline's training cost, the "
+                     "per-pass loss "
+                     "beats " + ("the free test-time gain, last-update training and ordinary 8-pass training."
+                                 if a.stage == 3 else "the free test-time gain and ordinary 8-pass training on VOC too.")
+                     + " Stop and report.")
+        elif a.stage == 3 and not gains["E"] and not gain("D", "E"):
+            L.append("**STOP: ordinary 8-pass training does as well.** Neither F nor D beats E, so the per-pass loss "
+                     "is not what helps; training with 8 passes is.")
+        elif a.stage == 3 and not all(gains.values()):
+            L.append("**STOP: the gain does not hold at the baseline's training cost.** F fails against "
+                     + ", ".join(c for c in controls if not gains[c]) + ". D's gain may come from its extra "
+                     "decoding per step, so compute is not ruled out.")
+        elif not all(gains.values()):
+            L.append("**STOP: not replicated on VOC.** F fails against "
+                     + ", ".join(c for c in controls if not gains[c]) + ".")
         else:
             L.append("**STOP: the gain comes with a loss on another score.** See the differences table.")
     text = "\n".join(L) + "\n"

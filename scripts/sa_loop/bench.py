@@ -20,6 +20,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--mode", default="baseline", choices=["baseline", "sa_rec"])
 ap.add_argument("--slot-iters", type=int, default=3)
 ap.add_argument("--sa-detach", action="store_true")
+ap.add_argument("--sa-sample-pass", action="store_true")
 ap.add_argument("--image-size", type=int, default=336)
 ap.add_argument("--batch", type=int, default=32)
 ap.add_argument("--decoder-hidden", type=int, default=1469)
@@ -27,7 +28,8 @@ ap.add_argument("--steps", type=int, default=25)
 a = ap.parse_args()
 
 cfg = OmegaConf.load("configs/base.yaml")
-cfg.model.update(slot_iters=a.slot_iters, sa_detach=a.sa_detach, image_size=a.image_size,
+cfg.model.update(slot_iters=a.slot_iters, sa_detach=a.sa_detach, sa_sample_pass=a.sa_sample_pass,
+                 image_size=a.image_size,
                  decoder_hidden=a.decoder_hidden)
 model = DinoSlotModel(mode=a.mode, **cfg.model).cuda().train()
 params = [p for p in model.parameters() if p.requires_grad]
@@ -48,7 +50,8 @@ for step in range(a.steps):
     torch.cuda.synchronize()
     times.append(time.time() - t0)
 per = sum(times[5:]) / len(times[5:])
-print(f"mode={a.mode} passes={a.slot_iters} detach={a.sa_detach} image={a.image_size} batch={a.batch} | "
+print(f"mode={a.mode} passes={a.slot_iters} detach={a.sa_detach} sample={a.sa_sample_pass} image={a.image_size} "
+      f"batch={a.batch} | "
       f"{sum(p.numel() for p in params) / 1e6:.4f}M parameters | {model.num_patches} patches | "
       f"{per:.3f} s/step | peak GPU memory {torch.cuda.max_memory_allocated() / 2**30:.1f} GB "
       f"(the card has 16 GB; keep the peak under 13 GB)")
