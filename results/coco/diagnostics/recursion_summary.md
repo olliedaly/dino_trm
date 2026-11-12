@@ -126,7 +126,7 @@ The table sets out each model by what was varied. The last three columns are out
 ## 4. What these results depend on
 
 - **The module can read the image.** The takeover runs through its cross-attention (section 2).
-- **The module sits behind slot attention.** Two parts of the model can each form the slots, so one can displace the other. Where the repeated block is the only part that groups, as when slot attention itself is run for more iterations, there is nothing to displace. One model was trained that way (8 slot-attention iterations with a loss on each and the gradient cut between them, 1 seed). Its map scores 49.2 / 27.3 / 34.2 FG-ARI / mBO_i / mBO_c, its reconstruction error is 8% below the baseline's, and it does not move towards grouping by position. The two loops are drawn side by side in [the two recursions](../../../docs/two_recursions.md).
+- **The module sits behind slot attention.** Two parts of the model can each form the slots, so one can displace the other. Where the repeated block is the only part that groups, as when slot attention itself is run for more iterations, there is nothing to displace. Slot attention was later trained that way (8 iterations with a loss on each and the gradient cut between them, 3 seeds). On COCO its map scores 49.0 / 27.4 / 34.4 FG-ARI / mBO_i / mBO_c, about 1 point of mBO above the baseline run for 8 iterations, with FG-ARI level. The gain did not replicate on PASCAL VOC. Its first seed does not move towards grouping by position. The two loops are drawn side by side in [the two recursions](../../../docs/two_recursions.md).
 - **The block is small.** The same recursion with a wider shared block ends up grouping by appearance.
 - **The decoder and the readout.** The MLP decoder's masks group by position even when slot attention's map does not (section 2). Seitzer et al. (2023) report the same split between decoders: their MLP decoder leans towards instance-level grouping, with higher FG-ARI, and their Transformer decoder towards class-level grouping, with higher mBO. T=1 and T=8 sit at different points on that axis.
 - **The data.** One COCO subset, frozen DINOv3 features, 7 slots. "Appearance" here means similarity of those features, which is largely semantic.
@@ -141,7 +141,7 @@ The table sets out each model by what was varied. The last three columns are out
 
 - One training set (a 25k-image COCO subset, about 23k steps) at 3 seeds, one backbone, 7 slots and one decoder. Absolute scores are not comparable to published full-COCO results.
 - T=2 and T=4 are one seed each. The pair without cross-attention is one seed, trained on VOC and scored on COCO images.
-- The model trained with 8 slot-attention iterations is one seed. A version with full backpropagation through the iterations is noted in the run script as unstable and was not scored.
+- Slot attention trained with 8 iterations was tested separately with 3 seeds and four controls; the results and their limits are in [the two recursions](../../../docs/two_recursions.md). A version with full backpropagation through the iterations is noted in the run script as unstable and was not scored.
 - The two larger models have 3.7× the parameters. There is no 1-step model of that size, and no model with separate blocks at T=8's size.
 - The module called "3 layers applied once" has 11% more parameters than T=1.
 - The per-epoch measures use the first 512 validation images and one checkpoint per epoch, so events within an epoch can't be ordered.

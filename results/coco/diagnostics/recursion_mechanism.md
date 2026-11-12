@@ -621,7 +621,7 @@ The VOC null is therefore a composition effect: VOC images rarely contain the sa
 
 ## 8. Contrast: recursing with slot attention itself (`sa_rec_1step`, 1 seed)
 
-Slot attention run for 8 trained iterations, read from its own attention map. Compared with the baseline's map:
+Slot attention run for 8 trained iterations, read from its own attention map. This section is seed 0 only. The 3-seed test with controls, on COCO and PASCAL VOC, is in [the two recursions](../../../docs/two_recursions.md). Compared with the baseline's map:
 - **Not local:** far sharing 0.165 against 0.146 (decoder 0.135 against 0.114).
 - **Lower reconstruction error:** 0.0310 against 0.0336.
 - **Probes:** class 0.637, position 0.728, size 0.426. It gains position information without losing class information.
