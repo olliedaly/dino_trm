@@ -1,0 +1,43 @@
+2026-11-09 22:16:48 START sa8_last: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 model.sa_detach=true data.dataset=coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 log.ckpt_dir=checkpoints/coco model.decoder_hidden=1469 eval.max_batches=15 seed=0 log.run_name=sa8_last
+2026-11-09 23:54:37 DONE sa8_last
+2026-11-09 23:54:37 START sa8_last_seed1: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 model.sa_detach=true data.dataset=coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 log.ckpt_dir=checkpoints/coco model.decoder_hidden=1469 eval.max_batches=15 seed=1 log.run_name=sa8_last_seed1
+2026-11-10 01:32:25 DONE sa8_last_seed1
+2026-11-10 01:32:25 START sa8_last_seed2: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 model.sa_detach=true data.dataset=coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 log.ckpt_dir=checkpoints/coco model.decoder_hidden=1469 eval.max_batches=15 seed=2 log.run_name=sa8_last_seed2
+2026-11-10 03:10:12 DONE sa8_last_seed2
+2026-11-10 03:10:12 SKIP sa_rec_1step (finished)
+2026-11-10 03:10:12 START sa_rec_1step_seed1: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true data.dataset=coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 log.ckpt_dir=checkpoints/coco model.decoder_hidden=1469 eval.max_batches=15 seed=1 log.run_name=sa_rec_1step_seed1
+2026-11-10 13:28:47 DONE sa_rec_1step_seed1
+2026-11-10 13:28:47 START sa_rec_1step_seed2: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true data.dataset=coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 log.ckpt_dir=checkpoints/coco model.decoder_hidden=1469 eval.max_batches=15 seed=2 log.run_name=sa_rec_1step_seed2
+2026-11-10 23:45:26 DONE sa_rec_1step_seed2
+2026-11-10 23:45:26 QUEUE FINISHED: sa8_last sa8_last_seed1 sa8_last_seed2 sa_rec_1step sa_rec_1step_seed1 sa_rec_1step_seed2
+2026-11-11 09:57:01 START sa8_full: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 data.dataset=coco log.ckpt_dir=checkpoints/coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 eval.max_batches=15 seed=0 log.run_name=sa8_full
+2026-11-11 11:38:51 DONE sa8_full
+2026-11-11 11:38:51 START sa8_full_seed1: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 data.dataset=coco log.ckpt_dir=checkpoints/coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 eval.max_batches=15 seed=1 log.run_name=sa8_full_seed1
+2026-11-11 13:17:53 DONE sa8_full_seed1
+2026-11-11 13:17:53 START sa8_full_seed2: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 data.dataset=coco log.ckpt_dir=checkpoints/coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 eval.max_batches=15 seed=2 log.run_name=sa8_full_seed2
+2026-11-11 14:56:52 DONE sa8_full_seed2
+2026-11-11 14:56:52 START sa8_rand: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true model.sa_sample_pass=true data.dataset=coco log.ckpt_dir=checkpoints/coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 eval.max_batches=15 seed=0 log.run_name=sa8_rand
+2026-11-11 16:50:49 DONE sa8_rand
+2026-11-11 16:50:49 START sa8_rand_seed1: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true model.sa_sample_pass=true data.dataset=coco log.ckpt_dir=checkpoints/coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 eval.max_batches=15 seed=1 log.run_name=sa8_rand_seed1
+2026-11-11 18:44:46 DONE sa8_rand_seed1
+2026-11-11 18:44:46 START sa8_rand_seed2: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true model.sa_sample_pass=true data.dataset=coco log.ckpt_dir=checkpoints/coco log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 eval.max_batches=15 seed=2 log.run_name=sa8_rand_seed2
+2026-11-11 20:38:42 DONE sa8_rand_seed2
+2026-11-11 20:38:42 QUEUE FINISHED: sa8_full sa8_full_seed1 sa8_full_seed2 sa8_rand sa8_rand_seed1 sa8_rand_seed2
+2026-11-12 07:23:51 SKIP baseline_pm_m (finished)
+2026-11-12 07:23:51 START baseline_pm_m_seed1: uv run python -m dino_trm.train mode=baseline data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=1 log.run_name=baseline_pm_m_seed1
+2026-11-12 08:24:57 DONE baseline_pm_m_seed1
+2026-11-12 08:24:57 START baseline_pm_m_seed2: uv run python -m dino_trm.train mode=baseline data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=2 log.run_name=baseline_pm_m_seed2
+2026-11-12 09:25:56 DONE baseline_pm_m_seed2
+2026-11-12 09:25:56 START sa8_full_voc: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=0 log.run_name=sa8_full_voc
+2026-11-12 10:26:58 DONE sa8_full_voc
+2026-11-12 10:26:58 START sa8_full_voc_seed1: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=1 log.run_name=sa8_full_voc_seed1
+2026-11-12 11:27:58 DONE sa8_full_voc_seed1
+2026-11-12 11:27:58 START sa8_full_voc_seed2: uv run python -m dino_trm.train mode=baseline model.slot_iters=8 data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=2 log.run_name=sa8_full_voc_seed2
+2026-11-12 12:28:59 DONE sa8_full_voc_seed2
+2026-11-12 12:28:59 START sa8_rand_voc: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true model.sa_sample_pass=true data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=0 log.run_name=sa8_rand_voc
+2026-11-12 13:37:04 DONE sa8_rand_voc
+2026-11-12 13:37:04 START sa8_rand_voc_seed1: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true model.sa_sample_pass=true data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=1 log.run_name=sa8_rand_voc_seed1
+2026-11-12 14:45:07 DONE sa8_rand_voc_seed1
+2026-11-12 14:45:07 START sa8_rand_voc_seed2: uv run python -m dino_trm.train mode=sa_rec model.slot_iters=8 model.sa_detach=true model.sa_sample_pass=true data.large_train=true eval.max_batches=10 log.wandb=false optim.epochs=30 optim.warmup_steps=300 model.decoder_hidden=1469 seed=2 log.run_name=sa8_rand_voc_seed2
+2026-11-12 15:53:09 DONE sa8_rand_voc_seed2
+2026-11-12 15:53:09 QUEUE FINISHED: baseline_pm_m baseline_pm_m_seed1 baseline_pm_m_seed2 sa8_full_voc sa8_full_voc_seed1 sa8_full_voc_seed2 sa8_rand_voc sa8_rand_voc_seed1 sa8_rand_voc_seed2
