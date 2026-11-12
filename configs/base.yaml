@@ -33,6 +33,8 @@ model:
   sa_detach: false       # detach slots between slot-attention iterations (1-step gradients).
                          # mode=sa_rec: each iteration's loss trains that update only.
                          # mode=baseline: the one loss trains the last update only.
+  sa_sample_pass: false  # mode=sa_rec, training only: decode each image at one pass, drawn
+                         # in proportion to its loss weight, instead of at every pass
   trm_detach: false      # mode=trm/coupled: detach y, z between steps (1-step gradients)
   trm_untie: false       # mode=trm/coupled: a separate block per step, each starting as a
                          # copy of the shared one (depth without weight sharing)

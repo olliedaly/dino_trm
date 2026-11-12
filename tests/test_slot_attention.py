@@ -99,3 +99,25 @@ def test_decoder_loc_bias_makes_masks_local():
         return ((loc.patch_pos - c).pow(2).sum(-1) * m).sum() / m.sum()
 
     assert spread(m1) < spread(m0)
+
+
+def test_sample_passes_gives_each_image_one_pass_in_proportion_to_its_weight():
+    """Intermediate passes have weight 0.25 and the final pass 1.0, so the final pass is
+    drawn 1 / 2.75 = 36% of the time and each of the other seven 9%."""
+    from dino_trm.models.full_model import sample_passes
+    torch.manual_seed(0)
+    assert sample_passes(8, 32).shape == (32,)
+    draws = sample_passes(8, 40000)
+    assert draws.min() >= 0 and draws.max() <= 7
+    freq = torch.bincount(draws, minlength=8).float() / len(draws)
+    assert abs(freq[7].item() - 1 / 2.75) < 0.01
+    assert all(abs(f.item() - 0.25 / 2.75) < 0.006 for f in freq[:7])
+
+
+def test_sampled_pass_selection_picks_each_images_own_pass():
+    """The indexing used in the model: image b gets the slots of its own sampled pass."""
+    slots_all = [torch.full((4, 7, 3), float(t)) for t in range(8)]
+    picked = torch.tensor([7, 0, 3, 7])
+    chosen = torch.stack(slots_all)[picked, torch.arange(4)]
+    assert chosen.shape == (4, 7, 3)
+    assert chosen[:, 0, 0].tolist() == [7.0, 0.0, 3.0, 7.0]

@@ -38,6 +38,24 @@ from .slot_attention import SlotAttention
 from .trm_module import TRMReasoner
 
 
+# Deep-supervision weights of configs/base.yaml (loss.intermediate_weight, loss.final_weight).
+SA_PASS_WEIGHTS = (0.25, 1.0)
+
+
+def sample_passes(n_passes: int, batch: int) -> torch.Tensor:
+    """One slot-attention pass per image, for mode "sa_rec" with ``sa_sample_pass``.
+
+    Each image's pass is drawn with probability proportional to its deep-supervision
+    weight (0.25 for an intermediate pass, 1.0 for the final one). A loss on each image's
+    own pass has the same expected gradient direction as the weighted loss on every pass
+    of every image, at the cost of one decode per image instead of ``n_passes``. Every
+    step still mixes all the passes, which a single pass per step would not.
+    Returns (batch,) long.
+    """
+    w = torch.tensor([SA_PASS_WEIGHTS[0]] * (n_passes - 1) + [SA_PASS_WEIGHTS[1]])
+    return torch.multinomial(w, batch, replacement=True)
+
+
 class DinoSlotModel(nn.Module):
     def __init__(
         self,
@@ -60,6 +78,7 @@ class DinoSlotModel(nn.Module):
         gnn_cross_attn: bool = False,
         mlp_block_layers: int = 3,   # depth of the non-recursive control reasoner
         sa_detach: bool = False,     # detach slots between slot-attention iterations (1-step grads)
+        sa_sample_pass: bool = False,  # sa_rec, training: decode each image at one sampled pass (sample_passes)
         trm_detach: bool = False,    # trm/coupled: detach y, z between steps (1-step grads)
         trm_untie: bool = False,     # trm/coupled: a separate block per step (no weight sharing)
         gnn_mlp_ratio: int = 4,      # trm/coupled: FFN width of the module's blocks (x slot_dim)
@@ -74,6 +93,7 @@ class DinoSlotModel(nn.Module):
         self.num_slots = num_slots
         self.target_norm = target_norm
         self.sa_detach = sa_detach
+        self.sa_sample_pass = sa_sample_pass
 
         self.backbone = FrozenBackbone(model_id=model_id, dtype=dtype, image_size=image_size)
         feat_dim = self.backbone.feature_dim
@@ -149,14 +169,24 @@ class DinoSlotModel(nn.Module):
         proj = self.input_proj(target)                # (B, N, slot_dim)
 
         if self.mode == "sa_rec":
-            # Decode the slots after every slot-attention iteration (deep supervision).
+            # Decode the slots after every slot-attention iteration (deep supervision). With
+            # sa_sample_pass, in training, decode each image at one sampled iteration instead.
             slots_all, attn_all, q = self.slot_attention(
                 proj, return_all=True, detach_iters=self.sa_detach)
             recons, masks_list = [], []
-            for s in slots_all:
-                recon, masks = self.decoder(s)
+            if self.sa_sample_pass and self.training:
+                picked = sample_passes(len(slots_all), proj.shape[0]).to(proj.device)
+                chosen = torch.stack(slots_all)[picked, torch.arange(proj.shape[0], device=proj.device)]
+                recon, masks = self.decoder(chosen)
                 recons.append(recon)
                 masks_list.append(masks)
+                picked = picked.tolist()
+            else:
+                picked = list(range(len(slots_all)))
+                for s in slots_all:
+                    recon, masks = self.decoder(s)
+                    recons.append(recon)
+                    masks_list.append(masks)
             return {
                 "target": target,
                 "recons": recons,          # n_iters tensors (B, N, feat_dim)
@@ -166,6 +196,7 @@ class DinoSlotModel(nn.Module):
                 "queries": [q],
                 "attn": attn_all[-1],
                 "attn_list": attn_all,     # n_iters tensors (B, K, N)
+                "passes": picked,          # the iterations decoded (with sa_sample_pass: one per image)
             }
 
         # sa_detach also applies here (off by default): mode=baseline with slot_iters=8 and
