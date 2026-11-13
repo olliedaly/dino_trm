@@ -58,7 +58,9 @@ is the overlap of the best slot with each object (i) or each class (c).
    map, and there it scores 48.0, above T=8's 47.0.
 3. **A metric that rewards dividing the image by position.** FG-ARI counts two objects
    of one class in one slot as an error and ignores background. T=8 gains 2.2 points in
-   images with two far-apart objects of one class and loses 2.8 in images with none.
+   images with two far-apart objects of one class and loses 2.8 in images with none. So
+   the gain depends on the test images. On PASCAL VOC, where 55% of images have no two
+   objects of one class (13% on COCO), the same models gain only 0.3 [−0.4, +0.9].
 
 ## What the 8 steps do instead
 
