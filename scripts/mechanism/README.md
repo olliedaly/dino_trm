@@ -72,6 +72,7 @@ These scripts produce the numbers in `results/coco/diagnostics/recursion_mechani
    | `fig_profile.py C OUT` | `recursion_profile.png` |
    | `fig_examples.py C OUT` | `recursion_examples.png` |
    | `fig_readme.py C results/figures` | `readme_examples.png`: the main README's two examples, chosen for clarity |
+   | `fig_takeover.py C results/figures` | `readme_takeover.png`: the main README's training curves for T=1, T=8, the wide shared block and the separate blocks, and the shared-against-separate differences |
    | `fig_selectivity.py C OUT` | `recursion_selectivity.png`: reconstruction error against class selectivity and long-range locality (5) |
    | `fig_race.py C OUT` | `recursion_race.png`: the output's dependence on slot attention's slots, slot attention's own map and class selectivity over training (4) |
 

@@ -84,8 +84,8 @@ fig.text(0.01, 0.01, "First 512 COCO val images, eval seed 0. T=1, T=8 and the 1
          "(T=2, tables in section 4, behaves like T=4 but later).\n"
          "(a) Each image's slot-attention slots are swapped for another image's: 0 = the final output is unchanged, 1 = it becomes "
          "the other image's output.\n"
-         "Recursion's later steps learn to rebuild the slots from the image, so the output stops following slot attention's slots, "
-         "the deeper the sooner (a). Slot attention then collapses (b).\n"
+         "With more steps the module learns to rebuild the slots from the image, so the output stops following slot attention's slots, "
+         "the more steps the sooner (a). Slot attention then stops segmenting (b).\n"
          "T=1 and T=4 take up slot attention's grouping (c) while their output still follows it; T=8 and the 1-step control "
          "stop following it first.", fontsize=7.5, color=INK2)
 fig.subplots_adjust(left=0.04, right=0.955, top=0.9, bottom=0.25)
