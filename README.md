@@ -94,10 +94,11 @@ Each panel answers one question:
 - **(b) Does slot attention still segment?** Not once its slots are unused. The FG-ARI of
   its own map falls from 43 to 18 in T=8 and to 20 with separate blocks. With the wide
   block it falls later and less, to 31.
-- **(c) Does the output still group patches by class?** On this scale 1 means no
-  preference for same-class patches. T=1 ends at 2.0 and T=8 at 1.6: T=8 is the model
-  that divides the image by position. Both controls end at 1.9. So of the 8-step models,
-  only the small shared block loses the grouping.
+- **(c) How strongly does the output group patches by class?** On this scale 1 means no
+  preference for same-class patches. Every model starts near 1.2 and rises with
+  training. T=1 reaches 2.0 and both controls reach 1.9. T=8 reaches only 1.6, so it
+  learns about half as much of this grouping. It is the model that divides the image by
+  position. So of the 8-step models, only the small shared block falls short.
 - **(d) Do shared weights help?** No. The wide shared block scores below the separate
   blocks on all four scores: by 0.6 FG-ARI [0.2, 0.9] and by about 0.2 on the other
   three.
