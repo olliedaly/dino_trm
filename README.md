@@ -64,29 +64,47 @@ is the overlap of the best slot with each object (i) or each class (c).
 
 ## What the 8 steps do instead
 
-![Over training: how far the output follows slot attention's slots, the FG-ARI of slot attention's own map, and how strongly the output groups by class, for four models; and shared weights against separate blocks](results/figures/readme_takeover.png)
-
 The module is meant to refine the 7 slots that slot attention hands it. But it also reads
 the image patches itself, through cross-attention, so it has a second way to make slots.
 
-- **With 8 steps the module stops using slot attention's slots (a).** It makes the slots
-  from the patches by itself. The test is to hand the module the slots of a different
-  image and see whether its output changes. By the end of training, with 1 step the
-  output moves 37% of the way to the other image's output. With 8 steps it does not move
-  at all.
-- **Slot attention then stops segmenting (b).** Nothing uses its slots any more, and the
-  FG-ARI of its own map falls from 43 to 18.
-- **This goes with the number of steps, not with shared weights (a).** Every 8-step
-  model ends at 12% or below, and with a separate block for each step it happens sooner.
-  It needs the cross-attention: without it, 8 steps change nothing (one seed, not drawn).
-- **Only the small shared block then stops grouping by class (c).** T=8's output ends at
-  1.6, against 2.0 for T=1, where 1 means no preference for same-class patches. This is
-  the model that divides the image by position. With a wider shared block, or a block per
-  step, the 8-step model ends at 1.9. The small block also keeps most of it, 1.8, when
-  it starts from T=1's trained weights (one seed, not drawn).
-- **Sharing weights adds nothing measurable (d).** At 8 steps and 23.5M parameters, one
-  shared block scores below a separate block per step on all four scores: by 0.6 FG-ARI
-  [0.2, 0.9] and by about 0.2 on the other three.
+The figure compares four models. They share slot attention and the decoder, and differ
+only in the module:
+
+| model | its module | parameters |
+|---|---|:--:|
+| 1 step (T=1) | one small block, applied once | 6.40M |
+| 8 steps, one small shared block (T=8) | the same block, applied 8 times. This is the recursive model | 6.40M |
+| 8 steps, one wide shared block | one larger block, applied 8 times | 23.5M |
+| 8 steps, a separate block per step | 8 different blocks, applied one after another | 23.5M |
+
+The last two are controls. They have the same number of steps and the same size, so
+they differ only in whether the steps share weights.
+
+![Over training: how far the output follows slot attention's slots, the FG-ARI of slot attention's own map, and how strongly the output groups by class, for four models; and shared weights against separate blocks](results/figures/readme_takeover.png)
+
+Each panel answers one question:
+
+- **(a) Does the module still use slot attention's slots?** The test is to give the
+  module the slots of a different image and see whether its output changes. By the end
+  of training, with 1 step the output moves 37% of the way to the other image's output.
+  With 8 steps it moves 0% for T=8 and for the separate blocks, and 12% for the wide
+  block. So with 8 steps the module makes the slots from the patches by itself. The
+  separate blocks get there soonest, so this goes with the number of steps, not with
+  shared weights.
+- **(b) Does slot attention still segment?** Not once its slots are unused. The FG-ARI of
+  its own map falls from 43 to 18 in T=8 and to 20 with separate blocks. With the wide
+  block it falls later and less, to 31.
+- **(c) Does the output still group patches by class?** On this scale 1 means no
+  preference for same-class patches. T=1 ends at 2.0 and T=8 at 1.6: T=8 is the model
+  that divides the image by position. Both controls end at 1.9. So of the 8-step models,
+  only the small shared block loses the grouping.
+- **(d) Do shared weights help?** No. The wide shared block scores below the separate
+  blocks on all four scores: by 0.6 FG-ARI [0.2, 0.9] and by about 0.2 on the other
+  three.
+
+Two more results are not drawn, and each has one seed. Without the cross-attention, 8
+steps change nothing. And the small shared block keeps most of the grouping by class,
+1.8, when it starts from T=1's trained weights.
 
 ## Recursion inside slot attention
 
